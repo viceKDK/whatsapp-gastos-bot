@@ -1,0 +1,180 @@
+/* 
+Dashboard Custom Styles
+
+Estilos adicionales para el dashboard web del bot de gastos.
+Este archivo se puede usar como alternativa a los estilos inline.
+*/
+
+:root {
+    --primary-color: #2563eb;
+    --primary-light: #3b82f6;
+    --primary-dark: #1d4ed8;
+    --secondary-color: #64748b;
+    --success-color: #22c55e;
+    --warning-color: #f59e0b;
+    --danger-color: #ef4444;
+    --dark-color: #1e293b;
+    --light-bg: #f8fafc;
+    --border-radius: 12px;
+    --box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    --transition: all 0.3s ease;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(20px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes slideIn {
+    from { 
+        transform: translateX(-100%); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    }
+}
+
+/* Loading states */
+.loading-fade {
+    opacity: 0.6;
+    pointer-events: none;
+    transition: var(--transition);
+}
+
+.stat-card.updating {
+    animation: pulse 2s infinite;
+}
+
+/* Custom scrollbar */
+.custom-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb {
+    background: var(--primary-color);
+    border-radius: 3px;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-dark);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .stat-value {
+        font-size: 2rem !important;
+    }
+    
+    .chart-container {
+        height: 300px !important;
+    }
+    
+    .card-body {
+        padding: 1rem !important;
+    }
+}
+
+/* Chart containers with better responsive handling */
+.chart-responsive {
+    position: relative;
+    height: 0;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+}
+
+.chart-responsive canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Enhanced status badges */
+.status-indicator {
+    position: relative;
+    display: inline-block;
+}
+
+.status-indicator::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.healthy::before {
+    background-color: var(--success-color);
+}
+
+.status-indicator.warning::before {
+    background-color: var(--warning-color);
+}
+
+.status-indicator.critical::before {
+    background-color: var(--danger-color);
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --light-bg: #1e293b;
+        --text-color: #f1f5f9;
+        --card-bg: #334155;
+    }
+    
+    body {
+        color: var(--text-color);
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    }
+    
+    .card {
+        background-color: var(--card-bg);
+        border: 1px solid #475569;
+    }
+    
+    .stat-card {
+        background: linear-gradient(135deg, var(--card-bg) 0%, #475569 100%);
+    }
+}
+
+/* Print styles */
+@media print {
+    .navbar-custom,
+    .refresh-btn {
+        display: none !important;
+    }
+    
+    .card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+    
+    body {
+        background: white !important;
+    }
+}

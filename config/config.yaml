@@ -1,0 +1,73 @@
+whatsapp:
+  target_chat_name: Gastos
+  chrome_headless: false
+  chrome_user_data_dir: "C:\\Chrome\\WABot"
+  connection_timeout_seconds: 60
+  message_polling_interval_seconds: 5
+  chrome_profile_path: null
+  max_reconnection_attempts: 3
+storage:
+  primary_storage: excel
+  excel_file_path: data/gastos.xlsx
+  sqlite_db_path: data/gastos.db
+  backup_enabled: true
+  backup_interval_hours: 24
+  max_backup_files: 10
+logging:
+  level: DEBUG
+  file_path: logs/bot_gastos.log
+  max_file_size_mb: 10
+  backup_count: 5
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  console_enabled: true
+ocr:
+  enabled: true
+  language: spa+eng
+  confidence_threshold: 0.6
+  preprocessing_enabled: true
+  supported_formats:
+  - .jpg
+  - .jpeg
+  - .png
+  - .pdf
+  pdf_enabled: true
+  pdf_conversion_dpi: 200
+  max_pdf_pages: 10
+  tesseract_path: null
+validation:
+  max_amount: 1000000.0
+  min_amount: 0.01
+  required_fields:
+  - monto
+  - categoria
+  custom_categories:
+  - comida
+  - transporte
+  - servicios
+  - entretenimiento
+  - salud
+  - educacion
+  - hogar
+  - ropa
+  - otros
+export:
+  default_format: excel
+  output_directory: exports
+  include_charts: true
+  date_format: '%Y-%m-%d'
+  supported_formats:
+  - excel
+  - csv
+  - pdf
+  - json
+performance:
+  metrics_enabled: true
+  metrics_file: logs/metrics.json
+  alert_thresholds:
+    memory_usage_mb: 500.0
+    processing_time_seconds: 10.0
+    error_rate_percentage: 5.0
+_metadata:
+  version: '1.0'
+  created_by: Bot Gastos WhatsApp
+  description: Configuración del sistema de gastos

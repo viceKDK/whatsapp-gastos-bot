@@ -1,0 +1,7 @@
+Collecting psutil
+  Obtaining dependency information for psutil from https://files.pythonhosted.org/packages/50/1b/6921afe68c74868b4c9fa424dad3be35b095e16687989ebbb50ce4fceb7c/psutil-7.0.0-cp37-abi3-win_amd64.whl.metadata
+  Downloading psutil-7.0.0-cp37-abi3-win_amd64.whl.metadata (23 kB)
+Downloading psutil-7.0.0-cp37-abi3-win_amd64.whl (244 kB)
+   ---------------------------------------- 244.9/244.9 kB 1.7 MB/s eta 0:00:00
+Installing collected packages: psutil
+Successfully installed psutil-7.0.0

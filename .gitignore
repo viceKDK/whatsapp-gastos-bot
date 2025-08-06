@@ -1,0 +1,190 @@
+# Bot Gastos WhatsApp - Git Ignore
+# =================================
+
+# Python
+# -------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+# --------------------
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE
+# ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment and Config
+# ----------------------
+.env
+.env.local
+.env.*.local
+config/.env
+!config/.env.example
+
+# Data Files (IMPORTANT: Don't commit personal data)
+# --------------------------------------------------
+data/
+*.xlsx
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+# ----
+logs/
+*.log
+
+# OS Generated
+# ------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Testing
+# -------
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Selenium
+# --------
+chromedriver*
+geckodriver*
+*.crx
+
+# Backup Files
+# ------------
+*_backup_*
+backup/
+backups/
+
+# Machine Learning Models (Generated files, often large)
+# -------------------------------------------------------
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.json
+!models/README.md
+
+# OCR and Image Processing Temp Files
+# ------------------------------------
+**/bot_gastos_images/
+**/bot_gastos_pdf_images/
+*.jpg.tmp
+*.png.tmp
+*.pdf.tmp
+
+# Export Files
+# ------------
+exports/
+*.csv
+*.json
+*.html
+*.pdf
+
+# Temporary Files
+# ---------------
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Documentation builds
+# --------------------
+docs/_build/
+
+# PyInstaller
+# -----------
+*.manifest
+*.spec
+
+# Jupyter Notebook
+# ----------------
+.ipynb_checkpoints
+
+# pyenv
+# -----
+.python-version
+
+# pipenv
+# ------
+Pipfile.lock
+
+# PEP 582
+# -------
+__pypackages__/
+
+# Celery
+# ------
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+# ---------------------
+*.sage.py
+
+# Spyder project settings
+# -----------------------
+.spyderproject
+.spyproject
+
+# Rope project settings
+# ---------------------
+.ropeproject
+
+# mkdocs documentation
+# --------------------
+/site
+
+# mypy
+# ----
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+# -----------------
+.pyre/

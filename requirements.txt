@@ -1,0 +1,81 @@
+# Bot Gastos WhatsApp - Dependencies
+# ==================================
+
+# Core Dependencies
+# -----------------
+selenium>=4.15.0            # Web automation for WhatsApp Web
+openpyxl>=3.1.0             # Excel file manipulation
+requests>=2.31.0            # HTTP requests (for future API integrations)
+
+# Development Dependencies
+# ------------------------
+pytest>=7.4.0               # Testing framework
+pytest-cov>=4.1.0           # Coverage reporting
+black>=23.0.0               # Code formatting
+flake8>=6.0.0               # Code linting
+mypy>=1.5.0                 # Type checking
+
+# Optional Dependencies
+# ---------------------
+# Uncomment if using SQLite features
+# sqlite3                   # Built-in with Python
+
+# Uncomment if adding GUI support
+# tkinter                   # Built-in with Python (usually)
+# PyQt5>=5.15.0            # Alternative GUI framework
+
+# OCR and PDF Processing Dependencies
+Pillow>=10.0.0              # Image processing for OCR
+pytesseract>=0.3.10         # OCR capabilities
+opencv-python>=4.8.0        # Image preprocessing
+PyPDF2>=3.0.0              # PDF text extraction
+pdf2image>=1.16.0          # PDF to image conversion
+numpy>=1.24.0              # Numerical computing for image processing
+
+# Advanced Features
+pyyaml>=6.0.0              # YAML configuration files
+rich>=13.0.0               # Rich terminal output for CLI
+click>=8.1.0               # Command-line interface framework
+schedule>=1.2.0            # Task scheduling for backups
+psutil>=5.9.0              # System and process monitoring
+
+# Web Dashboard Dependencies
+flask>=2.3.0               # Web framework for dashboard
+flask-cors>=4.0.0          # Cross-origin resource sharing
+
+# Machine Learning Dependencies for NLP Categorization
+scikit-learn>=1.3.0        # Machine learning library
+pandas>=2.0.0              # Data manipulation and analysis
+numpy>=1.24.0              # Already included above, but needed for ML
+
+# System Dependencies Notes
+# -------------------------
+# The following are required but not installable via pip:
+# 
+# 1. Google Chrome browser
+#    - Download from: https://www.google.com/chrome/
+#    - ChromeDriver will be auto-downloaded by selenium-manager
+#
+# 2. Python 3.9 or higher
+#    - Download from: https://www.python.org/downloads/
+#
+# Installation Instructions
+# -------------------------
+# 1. Create virtual environment:
+#    python -m venv venv
+#
+# 2. Activate virtual environment:
+#    # Windows:
+#    venv\Scripts\activate
+#    # Linux/Mac:
+#    source venv/bin/activate
+#
+# 3. Install dependencies:
+#    pip install -r requirements.txt
+#
+# 4. Copy and configure environment file:
+#    cp config/.env.example config/.env
+#    # Edit config/.env with your settings
+#
+# 5. Run the bot:
+#    python main.py
