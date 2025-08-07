@@ -199,7 +199,10 @@ class BotRunner:
                         self._show_stats()
                         last_stats_time = datetime.now()
                     
-                    # NO necesitamos sleep - wait_for_new_message ya maneja la espera
+                    # Sleep solo si no hay conexión para evitar spam
+                    # Si hay conexión, wait_for_new_message ya maneja la espera
+                    if not self.whatsapp_connector or not self.whatsapp_connector.connected:
+                        time.sleep(10)  # Esperar 10s si no hay conexión
                     
                 except KeyboardInterrupt:
                     self.logger.info("Interrupción de teclado recibida")
@@ -225,25 +228,47 @@ class BotRunner:
     def _process_new_messages(self) -> None:
         """Procesa mensajes nuevos de WhatsApp usando detección en tiempo real."""
         try:
+            self.logger.debug("🎯 INICIANDO PROCESAMIENTO DE MENSAJES NUEVOS...")
+            
+            # Verificar estado de conexión ANTES de procesar
+            if not self.whatsapp_connector.connected or not self.whatsapp_connector.chat_selected:
+                self.logger.warning("🚨 CONEXIÓN PERDIDA - Intentando reconectar...")
+                self.logger.warning(f"   Estado: Connected={self.whatsapp_connector.connected}, Chat={self.whatsapp_connector.chat_selected}")
+                
+                # Intentar reconectar
+                if not self._reconnect_whatsapp():
+                    self.logger.error("❌ RECONEXIÓN FALLIDA - Esperando 10 segundos antes del siguiente intento")
+                    time.sleep(10)  # Esperar antes del siguiente intento
+                    return
+            
             # Usar wait_for_new_message para detección en tiempo real
-            # En lugar del intervalo fijo, esperamos activamente por mensajes
             timeout = min(self.settings.whatsapp.poll_interval_seconds, 30)  # Máximo 30s
+            self.logger.debug(f"⏰ Esperando mensajes con timeout de {timeout}s...")
+            
             mensajes = self.whatsapp_connector.wait_for_new_message(timeout)
+            self.logger.debug(f"📥 wait_for_new_message() retornó {len(mensajes) if mensajes else 0} mensajes")
             
             # Si no hay mensajes después del timeout, verificar una vez más por si acaso
             if not mensajes:
+                self.logger.debug("🔄 No hay mensajes del wait, verificando con get_new_messages()...")
                 mensajes = self.whatsapp_connector.get_new_messages()
+                self.logger.debug(f"📥 get_new_messages() retornó {len(mensajes) if mensajes else 0} mensajes")
             
             if not mensajes:
+                self.logger.debug("ℹ️ No hay mensajes nuevos para procesar")
                 return
             
             self.logger.info(f"🚀 PROCESANDO {len(mensajes)} MENSAJES NUEVOS")
             
-            for mensaje_texto, fecha_mensaje in mensajes:
+            for i, (mensaje_texto, fecha_mensaje) in enumerate(mensajes, 1):
+                self.logger.info(f"🔸 PROCESANDO MENSAJE {i}/{len(mensajes)}: '{mensaje_texto[:100]}...'")
+                self.logger.info(f"   📅 Fecha: {fecha_mensaje.strftime('%Y-%m-%d %H:%M:%S')}")
+                
                 self.stats['mensajes_procesados'] += 1
                 self.stats['ultima_actividad'] = datetime.now()
                 
                 # Procesar con procesador avanzado
+                self.logger.info(f"🧠 ENVIANDO A PROCESADOR AVANZADO...")
                 content = MessageContent(
                     text=mensaje_texto,
                     timestamp=fecha_mensaje,
@@ -251,38 +276,100 @@ class BotRunner:
                 )
                 
                 processing_result = self.advanced_processor.process_message(content)
+                self.logger.info(f"🔍 RESULTADO DEL PROCESADOR: success={processing_result.success}")
+                
+                if processing_result.gasto:
+                    self.logger.info(f"💰 GASTO DETECTADO: ${processing_result.gasto.monto} - {processing_result.gasto.categoria}")
+                else:
+                    self.logger.info(f"❌ NO SE DETECTÓ GASTO")
+                    if processing_result.errors:
+                        self.logger.info(f"   🚨 Errores: {processing_result.errors}")
+                    if processing_result.warnings:
+                        self.logger.info(f"   ⚠️ Warnings: {processing_result.warnings}")
                 
                 if processing_result.success and processing_result.gasto:
                     # Registrar en storage
+                    self.logger.info(f"💾 GUARDANDO GASTO EN STORAGE...")
                     try:
-                        self.storage_repository.guardar_gasto(processing_result.gasto)
-                        self.stats['gastos_registrados'] += 1
+                        storage_result = self.storage_repository.guardar_gasto(processing_result.gasto)
+                        self.logger.info(f"💾 RESULTADO DEL GUARDADO: {storage_result}")
                         
-                        # Log del gasto registrado
-                        self.logger.info(f"💰 Gasto registrado: ${processing_result.gasto.monto} - {processing_result.gasto.categoria}")
-                        
-                        # Mostrar en consola si no es modo headless
-                        if not self.settings.whatsapp.chrome_headless:
-                            print(f"💰 {datetime.now().strftime('%H:%M:%S')} - "
-                                  f"${processing_result.gasto.monto} en {processing_result.gasto.categoria}")
+                        if storage_result:
+                            self.stats['gastos_registrados'] += 1
+                            self.logger.info(f"✅ GASTO REGISTRADO EXITOSAMENTE!")
+                            self.logger.info(f"💰 ${processing_result.gasto.monto} - {processing_result.gasto.categoria}")
+                            
+                            # Mostrar en consola si no es modo headless
+                            if not self.settings.whatsapp.chrome_headless:
+                                print(f"💰 {datetime.now().strftime('%H:%M:%S')} - "
+                                      f"${processing_result.gasto.monto} en {processing_result.gasto.categoria}")
+                        else:
+                            self.logger.error(f"❌ ERROR: Storage devolvió False")
                         
                     except Exception as e:
-                        self.logger.error(f"Error guardando gasto: {e}")
+                        self.logger.error(f"❌ EXCEPCIÓN guardando gasto: {e}")
                         processing_result.success = False
                         processing_result.errors.append(f"Error guardando: {str(e)}")
                 
                 # Enviar respuesta automática si está habilitada
                 try:
+                    self.logger.info(f"📤 ENVIANDO RESPUESTA AUTOMÁTICA...")
                     self.whatsapp_connector.process_and_respond(mensaje_texto, processing_result)
+                    self.logger.info(f"✅ Respuesta automática enviada")
                 except Exception as e:
-                    self.logger.warning(f"Error enviando respuesta automática: {e}")
+                    self.logger.warning(f"⚠️ Error enviando respuesta automática: {e}")
                 
                 # Manejar comandos especiales
+                self.logger.info(f"🎯 VERIFICANDO COMANDOS ESPECIALES...")
                 self._handle_special_commands(mensaje_texto.lower().strip())
+                
+                self.logger.info(f"✅ MENSAJE {i} PROCESADO COMPLETAMENTE")
                 
         except Exception as e:
             self.stats['errores'] += 1
             self.logger.error(f"Error procesando mensajes: {e}")
+    
+    def _reconnect_whatsapp(self) -> bool:
+        """
+        Intenta reconectar WhatsApp.
+        
+        Returns:
+            True si la reconexión fue exitosa, False si no
+        """
+        try:
+            self.logger.info("🔄 INICIANDO RECONEXIÓN DE WHATSAPP...")
+            
+            # Limpiar estado actual
+            if self.whatsapp_connector:
+                try:
+                    self.whatsapp_connector.disconnect()
+                except:
+                    pass
+            
+            # Reinicializar conector
+            self.whatsapp_connector = WhatsAppEnhancedConnector(self.settings.whatsapp)
+            
+            # Intentar reconectar
+            if self.whatsapp_connector.connect():
+                # Configurar respuestas automáticas
+                self.whatsapp_connector.enable_auto_responses(
+                    self.settings.whatsapp.auto_responses_enabled
+                )
+                self.whatsapp_connector.response_delay = self.settings.whatsapp.response_delay_seconds
+                
+                if self.whatsapp_connector.sender:
+                    self.whatsapp_connector.sender.typing_delay = self.settings.whatsapp.typing_delay_seconds
+                    self.whatsapp_connector.sender.send_delay = self.settings.whatsapp.response_delay_seconds
+                
+                self.logger.info("✅ RECONEXIÓN EXITOSA!")
+                return True
+            else:
+                self.logger.error("❌ RECONEXIÓN FALLIDA - No se pudo conectar")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ ERROR EN RECONEXIÓN: {e}")
+            return False
     
     def _handle_special_commands(self, message_text: str) -> None:
         """

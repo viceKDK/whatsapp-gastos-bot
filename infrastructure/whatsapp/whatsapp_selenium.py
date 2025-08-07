@@ -48,6 +48,8 @@ class WhatsAppSeleniumConnector:
         self.driver = None
         self.connected = False
         self.chat_selected = False
+        self.last_message_time = None  # Inicializar timestamp del último mensaje
+        self.cached_selector = None  # Cachear el selector exitoso
 
         # === PERFIL DEDICADO DEL BOT ===
         self.user_data_dir = self._get_user_data_dir()
@@ -137,6 +139,7 @@ class WhatsAppSeleniumConnector:
         self.logger.info("Desconectando de WhatsApp Web...")
         self.connected = False
         self.chat_selected = False
+        self.cached_selector = None  # Resetear cache al desconectar
         self._cleanup_driver()
     
     def get_new_messages(self) -> List[Tuple[str, datetime]]:
@@ -147,48 +150,85 @@ class WhatsAppSeleniumConnector:
             Lista de tuplas (mensaje_texto, fecha_mensaje)
         """
         if not self.connected or not self.chat_selected:
-            self.logger.warning("WhatsApp no conectado o chat no seleccionado")
+            self.logger.warning("❌ ESTADO: WhatsApp no conectado o chat no seleccionado")
+            self.logger.warning(f"   Connected: {self.connected}, Chat selected: {self.chat_selected}")
             return []
         
         try:
-            self.logger.debug("🔍 Buscando mensajes nuevos...")
+            self.logger.info("🔍 INICIANDO BÚSQUEDA DE MENSAJES NUEVOS...")
+            self.logger.info(f"📊 Estado inicial - Último mensaje: {self.last_message_time}")
             messages = []
             
             # Obtener elementos de mensajes
+            self.logger.info("🎯 PASO 1: Obteniendo elementos de mensajes...")
             message_elements = self._get_message_elements()
             
             if not message_elements:
-                self.logger.debug("❌ No se encontraron elementos de mensaje")
+                self.logger.error("🚨 PASO 1 FALLIDO: No se encontraron elementos de mensaje")
                 return []
             
-            self.logger.debug(f"📱 Encontrados {len(message_elements)} elementos de mensaje")
+            self.logger.info(f"✅ PASO 1 EXITOSO: {len(message_elements)} elementos de mensaje encontrados")
             
             # Procesar cada mensaje
+            self.logger.info("🎯 PASO 2: Procesando elementos de mensajes...")
             new_messages_count = 0
+            
             for i, element in enumerate(message_elements):
                 try:
+                    self.logger.info(f"🔸 PROCESANDO ELEMENTO {i+1}/{len(message_elements)}...")
+                    
                     message_data = self._parse_message_element(element)
                     if message_data:
                         message_text, message_time = message_data
+                        self.logger.info(f"✅ ELEMENTO {i+1} PARSEADO: '{message_text[:50]}...' (Tiempo: {message_time.strftime('%H:%M:%S')})")
                         
-                        if self._is_new_message(message_time):
+                        # Verificar si es mensaje nuevo
+                        is_new = self._is_new_message(message_time)
+                        self.logger.info(f"   🔍 ¿Es nuevo?: {is_new} (último conocido: {self.last_message_time})")
+                        
+                        if is_new:
                             messages.append(message_data)
                             new_messages_count += 1
-                            self.logger.info(f"📩 NUEVO MENSAJE DETECTADO #{new_messages_count}: '{message_text}' (Tiempo: {message_time.strftime('%H:%M:%S')})")
+                            self.logger.info(f"🎉 NUEVO MENSAJE #{new_messages_count} AGREGADO!")
                         else:
-                            self.logger.debug(f"📝 Mensaje existente {i+1}: '{message_text[:50]}...' (Tiempo: {message_time.strftime('%H:%M:%S')})")
+                            self.logger.info(f"   ⏸️ Mensaje ya conocido, ignorado")
+                    else:
+                        self.logger.warning(f"❌ ELEMENTO {i+1} NO SE PUDO PARSEAR (devolvió None)")
                         
                 except Exception as e:
-                    self.logger.debug(f"Error procesando mensaje {i+1}: {e}")
+                    self.logger.error(f"❌ ERROR procesando elemento {i+1}: {e}")
                     continue
+            
+            self.logger.info("🎯 PASO 3: Finalizando procesamiento...")
             
             if messages:
                 # Actualizar timestamp del último mensaje
                 self.last_message_time = max(msg[1] for msg in messages)
-                self.logger.info(f"✅ PROCESADOS {len(messages)} MENSAJES NUEVOS - Último timestamp: {self.last_message_time.strftime('%H:%M:%S')}")
+                self.logger.info(f"🎉 ÉXITO! {len(messages)} MENSAJES NUEVOS PROCESADOS")
+                self.logger.info(f"📅 Último timestamp actualizado: {self.last_message_time.strftime('%H:%M:%S')}")
+                
+                # Mostrar resumen de mensajes nuevos
+                for i, (text, time) in enumerate(messages):
+                    self.logger.info(f"   📩 Mensaje #{i+1}: '{text[:100]}...' ({time.strftime('%H:%M:%S')})")
             else:
-                self.logger.debug("ℹ️ No hay mensajes nuevos")
+                self.logger.info("ℹ️ RESULTADO: No hay mensajes nuevos")
+                if message_elements:
+                    self.logger.info(f"   📊 Se procesaron {len(message_elements)} elementos pero ninguno era nuevo")
+                    
+                    # Si es la primera vez, inicializar last_message_time con el mensaje más reciente
+                    if self.last_message_time is None and message_elements:
+                        try:
+                            # Obtener el timestamp del último mensaje existente para futuros filtros
+                            latest_element = message_elements[-1]
+                            latest_message_data = self._parse_message_element(latest_element)
+                            if latest_message_data:
+                                self.last_message_time = latest_message_data[1]
+                                self.logger.info(f"🕐 Inicializando último timestamp: {self.last_message_time.strftime('%H:%M:%S')}")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ No se pudo inicializar timestamp: {e}")
+                            self.last_message_time = datetime.now()
             
+            self.logger.info(f"🏁 BÚSQUEDA COMPLETADA - Retornando {len(messages)} mensajes")
             return messages
             
         except Exception as e:
@@ -354,7 +394,7 @@ class WhatsAppSeleniumConnector:
             opts.add_experimental_option("debuggerAddress", f"127.0.0.1:{port}")
             
             self.driver = webdriver.Chrome(options=opts)
-            self.driver.implicitly_wait(5)
+            self.driver.implicitly_wait(2)  # Reducir timeout para detectar desconexiones más rápido
             
             # Verificar que estamos conectados
             current_url = self.driver.current_url
@@ -915,85 +955,189 @@ class WhatsAppSeleniumConnector:
     def _get_message_elements(self) -> List[object]:
         """Obtiene elementos de mensajes del chat actual con múltiples selectores."""
         try:
-            self.logger.debug("🔍 Buscando elementos de mensaje...")
+            self.logger.info("🔍 INICIANDO BÚSQUEDA DE ELEMENTOS DE MENSAJE...")
             
-            # Múltiples selectores para mensajes
+            # Verificar que estamos en un chat válido
+            try:
+                main_area = self.driver.find_element(By.CSS_SELECTOR, "#main")
+                self.logger.info("✅ Área principal encontrada")
+            except Exception as e:
+                self.logger.error(f"❌ ERROR: No se puede acceder al área principal: {e}")
+                return []
+            
+            # Múltiples selectores para mensajes (ordenados por probabilidad de éxito)
             message_selectors = [
+                "div[role='row']",        # ✅ ESTE SIEMPRE FUNCIONA - ponerlo primero
                 "[data-testid='msg-container']",
                 "[data-testid='message']",
-                "div[role='row']",
-                "div[data-id]",  # Mensajes tienen data-id
-                "div._1AOuq",    # Selector clásico de mensaje
-                "div._22Msk",    # Otro selector de mensaje
+                "div[data-id]",           # Mensajes tienen data-id
+                "div._1AOuq",             # Selector clásico de mensaje
+                "div._22Msk",             # Otro selector de mensaje
                 "div.message-in, div.message-out",  # Mensajes entrantes/salientes
                 "div[class*='message']",  # Cualquier div con 'message' en la clase
                 "div[class*='_1AOuq']",   # Variaciones del selector
                 "[data-pre-plain-text]",  # Atributo de mensajes
             ]
             
+            # Intentar primero con el selector cacheado si existe
             messages = []
-            for selector in message_selectors:
+            if self.cached_selector:
                 try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    self.logger.debug(f"🚀 USANDO SELECTOR CACHEADO: {self.cached_selector}")
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, self.cached_selector)
+                    
                     if elements:
-                        self.logger.debug(f"✅ Encontrados {len(elements)} elementos con selector: {selector}")
+                        self.logger.info(f"✅ SELECTOR CACHEADO EXITOSO: {len(elements)} elementos encontrados")
                         messages = elements
-                        break
+                    else:
+                        self.logger.warning("⚠️ Selector cacheado falló, probando todos los selectores...")
+                        self.cached_selector = None  # Resetear cache
                 except Exception as e:
-                    self.logger.debug(f"Selector {selector} falló: {e}")
-                    continue
+                    self.logger.warning(f"⚠️ Error con selector cacheado: {e}")
+                    self.cached_selector = None  # Resetear cache
+            
+            # Si no hay cache o falló, probar todos los selectores
+            if not messages:
+                self.logger.info(f"🎯 PROBANDO {len(message_selectors)} SELECTORES DIFERENTES...")
+                
+                for i, selector in enumerate(message_selectors):
+                    try:
+                        self.logger.debug(f"🔸 SELECTOR {i+1}/{len(message_selectors)}: {selector}")
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        self.logger.debug(f"📊 RESULTADO: {len(elements)} elementos encontrados")
+                        
+                        if elements:
+                            self.logger.info(f"✅ ÉXITO! Usando {len(elements)} elementos del selector: {selector}")
+                            messages = elements
+                            
+                            # CACHEAR el selector exitoso para próximas veces
+                            self.cached_selector = selector
+                            self.logger.info(f"💾 SELECTOR CACHEADO: {selector}")
+                            
+                            # Debug: mostrar info del primer elemento
+                            try:
+                                first_elem = elements[0]
+                                self.logger.debug(f"🔍 PRIMER ELEMENTO - Tag: {first_elem.tag_name}, Clases: {first_elem.get_attribute('class')}")
+                            except:
+                                pass
+                            break
+                        else:
+                            self.logger.debug(f"❌ SELECTOR VACÍO: {selector}")
+                            
+                    except Exception as e:
+                        self.logger.error(f"❌ SELECTOR FALLÓ: {selector} - Error: {e}")
+                        continue
             
             if not messages:
-                self.logger.warning("❌ No se encontraron elementos de mensaje con ningún selector")
+                self.logger.error("🚨 PROBLEMA CRÍTICO: No se encontraron elementos de mensaje con ningún selector")
+                
                 # Intentar selectores más genéricos
+                self.logger.info("🔧 INTENTANDO SELECTORES GENÉRICOS...")
                 generic_selectors = [
                     "div[role='application'] div div div",  # Muy genérico
                     "#main div div div",  # Dentro del área principal
                     "div[data-testid='main'] div div",  # Área de mensajes
+                    "#main div",  # Más simple
+                    "div",  # Ultra genérico
                 ]
                 
-                for selector in generic_selectors:
+                for i, selector in enumerate(generic_selectors):
                     try:
+                        self.logger.info(f"🔸 SELECTOR GENÉRICO {i+1}: {selector}")
                         elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        self.logger.info(f"📊 ELEMENTOS BRUTOS ENCONTRADOS: {len(elements)}")
+                        
                         # Filtrar elementos que parecen mensajes
                         potential_messages = []
-                        for elem in elements:
-                            if self._looks_like_message(elem):
-                                potential_messages.append(elem)
+                        for j, elem in enumerate(elements[:50]):  # Solo revisar los primeros 50
+                            try:
+                                if self._looks_like_message(elem):
+                                    potential_messages.append(elem)
+                                    if len(potential_messages) <= 5:  # Solo mostrar los primeros 5
+                                        self.logger.info(f"✅ MENSAJE POTENCIAL #{len(potential_messages)}: {elem.tag_name} - {elem.get_attribute('class')[:100]}")
+                            except:
+                                continue
                         
                         if potential_messages:
-                            self.logger.debug(f"✅ Encontrados {len(potential_messages)} mensajes potenciales con selector genérico: {selector}")
+                            self.logger.info(f"🎯 ÉXITO CON GENÉRICO! {len(potential_messages)} mensajes potenciales con selector: {selector}")
                             messages = potential_messages
                             break
-                    except:
+                        else:
+                            self.logger.info(f"❌ GENÉRICO SIN RESULTADOS: {selector}")
+                    except Exception as e:
+                        self.logger.error(f"❌ SELECTOR GENÉRICO FALLÓ: {selector} - Error: {e}")
                         continue
             
             if not messages:
-                self.logger.warning("❌ NO SE ENCONTRARON MENSAJES - Verificando estado del chat...")
-                # Debug: mostrar qué hay en el área principal
+                self.logger.error("🚨 BÚSQUEDA FALLIDA COMPLETAMENTE: NO SE ENCONTRARON MENSAJES")
+                
+                # Debug extensivo del DOM
                 try:
                     main_area = self.driver.find_element(By.CSS_SELECTOR, "#main")
-                    self.logger.debug(f"📱 Área principal encontrada, HTML sample: {main_area.get_attribute('outerHTML')[:200]}...")
+                    self.logger.error(f"🔍 ÁREA PRINCIPAL HTML (primeros 500 chars): {main_area.get_attribute('outerHTML')[:500]}...")
+                    
+                    # Intentar obtener screenshot para debug
+                    try:
+                        screenshot_path = f"debug_no_messages_{int(time.time())}.png"
+                        self.driver.save_screenshot(screenshot_path)
+                        self.logger.error(f"📸 Screenshot guardado: {screenshot_path}")
+                    except:
+                        pass
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ ERROR ACCEDIENDO AL ÁREA PRINCIPAL: {e}")
+                    
+                # Verificar URL actual
+                try:
+                    current_url = self.driver.current_url
+                    self.logger.error(f"🌐 URL ACTUAL: {current_url}")
+                    if "whatsapp.com" not in current_url:
+                        self.logger.error("🚨 PROBLEMA: No estamos en WhatsApp!")
                 except:
-                    self.logger.warning("❌ No se puede acceder al área principal del chat")
+                    pass
+                    
                 return []
             
             # Filtrar solo mensajes entrantes (no enviados por nosotros)
-            self.logger.debug(f"🔍 Filtrando {len(messages)} elementos para encontrar mensajes entrantes...")
+            self.logger.info(f"🔍 FILTRANDO {len(messages)} elementos para encontrar mensajes entrantes...")
             incoming_messages = []
             
             for i, msg in enumerate(messages):
                 try:
-                    if self._is_incoming_message(msg):
+                    self.logger.info(f"🔸 EVALUANDO MENSAJE {i+1}/{len(messages)}...")
+                    
+                    # Mostrar info del elemento
+                    try:
+                        elem_class = msg.get_attribute('class') or 'sin-clase'
+                        elem_text = msg.text[:100] if msg.text else 'sin-texto'
+                        self.logger.info(f"   📋 Clase: {elem_class}")
+                        self.logger.info(f"   📝 Texto: {elem_text}...")
+                    except:
+                        self.logger.info(f"   ❌ No se pudo obtener info del elemento")
+                    
+                    is_incoming = self._is_incoming_message(msg)
+                    self.logger.info(f"   🎯 Es mensaje entrante: {is_incoming}")
+                    
+                    if is_incoming:
                         incoming_messages.append(msg)
-                        self.logger.debug(f"✅ Mensaje entrante #{i+1} encontrado")
+                        self.logger.info(f"✅ MENSAJE ENTRANTE #{len(incoming_messages)} AGREGADO")
                     else:
-                        self.logger.debug(f"⬅️ Mensaje saliente #{i+1} ignorado")
+                        self.logger.info(f"⬅️ Mensaje saliente #{i+1} ignorado")
+                        
                 except Exception as e:
-                    self.logger.debug(f"❌ Error procesando mensaje #{i+1}: {e}")
+                    self.logger.error(f"❌ ERROR procesando mensaje #{i+1}: {e}")
                     continue
             
-            self.logger.debug(f"📊 Resultado: {len(incoming_messages)} mensajes entrantes de {len(messages)} totales")
+            self.logger.info(f"📊 RESULTADO FINAL: {len(incoming_messages)} mensajes entrantes de {len(messages)} totales")
+            
+            if not incoming_messages:
+                self.logger.error("🚨 PROBLEMA: NO SE ENCONTRARON MENSAJES ENTRANTES!")
+                self.logger.error("   💡 Posibles causas:")
+                self.logger.error("   - Todos los mensajes son enviados por nosotros")  
+                self.logger.error("   - El chat está vacío")
+                self.logger.error("   - Los selectores de mensajes están mal")
+                self.logger.error("   - La función _is_incoming_message() está fallando")
+            
             return incoming_messages
             
         except Exception as e:
@@ -1041,6 +1185,13 @@ class WhatsAppSeleniumConnector:
             Tupla (texto, fecha) o None si no se puede parsear
         """
         try:
+            # Verificar que el elemento sigue siendo accesible
+            try:
+                _ = element.tag_name  # Test básico de accesibilidad
+            except Exception as e:
+                self.logger.debug(f"Elemento no accesible, posible desconexión: {e}")
+                return None
+                
             self.logger.debug("🔍 Parseando elemento de mensaje...")
             
             # Múltiples selectores para el texto del mensaje
@@ -1182,10 +1333,20 @@ class WhatsAppSeleniumConnector:
         try:
             # Verificar que el driver sigue activo
             if not self.driver:
+                self.logger.warning("Driver no disponible")
+                return False
+            
+            # Verificar que el driver responde
+            try:
+                current_url = self.driver.current_url
+            except Exception as e:
+                self.logger.error(f"Driver no responde: {e}")
                 return False
                 
             # Verificar que estamos en WhatsApp Web
-            current_url = self.driver.current_url
+            if "whatsapp.com" not in current_url.lower():
+                self.logger.warning(f"No estamos en WhatsApp: {current_url}")
+                return False
             if "web.whatsapp.com" not in current_url:
                 return False
                 
@@ -1200,12 +1361,22 @@ class WhatsAppSeleniumConnector:
         """Limpia y cierra el driver de Chrome."""
         try:
             if self.driver:
+                self.logger.info("Cerrando driver Chrome...")
+                
+                # Timeout más corto para evitar que se cuelgue
+                try:
+                    self.driver.set_page_load_timeout(2)
+                    self.driver.implicitly_wait(1)
+                except:
+                    pass
+                
                 self.driver.quit()
                 self.driver = None
                 self.logger.info("Driver Chrome cerrado correctamente")
                 
         except Exception as e:
-            self.logger.error(f"Error cerrando driver: {e}")
+            self.logger.warning(f"Error cerrando driver (normal si Chrome se cerró): {e}")
+            self.driver = None
     
     def __del__(self):
         """Destructor para asegurar limpieza de recursos."""

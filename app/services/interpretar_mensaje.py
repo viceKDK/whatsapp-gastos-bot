@@ -31,6 +31,11 @@ class InterpretarMensajeService:
     PATRON_GASTO = re.compile(r'(?:gasto|gasté|pagué|compré)?\s*:?\s*(\d+(?:\.\d{1,2})?)\s+(.+)', re.IGNORECASE)
     PATRON_SOLO_MONTO = re.compile(r'^(\d+(?:\.\d{1,2})?)\s+(.+)$', re.IGNORECASE)
     PATRON_MONTO_DESCRIPCION = re.compile(r'(\d+(?:\.\d{1,2})?)\s+(.+)', re.IGNORECASE)
+    # Nuevos patrones ampliados
+    PATRON_COMPRE = re.compile(r'compre?\s+(\d+(?:\.\d{1,2})?)\s+(.+)', re.IGNORECASE)  # "compre 2500 ropa"
+    PATRON_GASTE = re.compile(r'(?:gaste|gasté)\s+(\d+(?:\.\d{1,2})?)\s+(?:en\s+)?(.+)', re.IGNORECASE)  # "gasté 150 en nafta"
+    PATRON_PAGUE = re.compile(r'(?:pague|pagué)\s+(\d+(?:\.\d{1,2})?)\s+(?:por\s+|de\s+)?(.+)', re.IGNORECASE)  # "pagué 500 por comida"
+    PATRON_CON_SIGNO = re.compile(r'[$$]\s*(\d+(?:\.\d{1,2})?)\s+(.+)', re.IGNORECASE)  # "$150 nafta"
     
     def __init__(self, enable_nlp_categorization: bool = True):
         self.logger = logger
@@ -105,14 +110,15 @@ class InterpretarMensajeService:
         Returns:
             True si parece ser un mensaje de gasto, False si no
         """
-        palabras_clave = ['gasto', 'gasté', 'pagué', 'compré']
+        palabras_clave = ['gasto', 'gasté', 'pagué', 'compré', 'compre', 'gaste', 'pague']
         texto_lower = texto.lower()
         
         # Buscar palabras clave o patrón numérico
         tiene_palabra_clave = any(palabra in texto_lower for palabra in palabras_clave)
         tiene_patron_numerico = bool(self.PATRON_SOLO_MONTO.match(texto))
+        tiene_signo_pesos = '$' in texto and any(char.isdigit() for char in texto)
         
-        return tiene_palabra_clave or tiene_patron_numerico
+        return tiene_palabra_clave or tiene_patron_numerico or tiene_signo_pesos
     
     def _extraer_datos(self, texto: str) -> Optional[Dict[str, Any]]:
         """
@@ -124,12 +130,24 @@ class InterpretarMensajeService:
         Returns:
             Dict con datos extraídos o None si no se puede extraer
         """
-        # Intentar patrón completo primero
-        match = self.PATRON_GASTO.search(texto)
+        # Lista de patrones a probar en orden
+        patrones = [
+            self.PATRON_COMPRE,        # "compre 2500 ropa"
+            self.PATRON_GASTE,         # "gasté 150 en nafta" 
+            self.PATRON_PAGUE,         # "pagué 500 por comida"
+            self.PATRON_CON_SIGNO,     # "$150 nafta"
+            self.PATRON_GASTO,         # "gasto: 500 comida"
+            self.PATRON_SOLO_MONTO,    # "150 nafta"
+        ]
         
-        if not match:
-            # Intentar patrón solo monto
-            match = self.PATRON_SOLO_MONTO.match(texto)
+        match = None
+        for patron in patrones:
+            if patron == self.PATRON_GASTO:
+                match = patron.search(texto)
+            else:
+                match = patron.match(texto)
+            if match:
+                break
         
         if not match:
             return None
@@ -205,14 +223,18 @@ class InterpretarMensajeService:
         """
         descripcion_lower = descripcion.lower()
         
-        # Mapeo de palabras clave a categorías
+        # Mapeo expandido de palabras clave a categorías
         categorias_tradicionales = {
-            'comida': ['comida', 'restaurant', 'almuerzo', 'cena', 'pizza', 'burger', 'delivery'],
-            'transporte': ['nafta', 'gasolina', 'combustible', 'taxi', 'uber', 'bus'],
-            'servicios': ['luz', 'agua', 'gas', 'internet', 'telefono', 'ute', 'ose', 'antel'],
-            'supermercado': ['super', 'market', 'tienda', 'almacen'],
-            'salud': ['farmacia', 'medicina', 'doctor', 'medico'],
-            'entretenimiento': ['cine', 'bar', 'juego', 'netflix'],
+            'comida': ['comida', 'restaurant', 'almuerzo', 'cena', 'pizza', 'burger', 'delivery', 'desayuno', 'merienda', 'snack', 'hamburguer', 'empanadas', 'asado', 'parrilla', 'sandwich', 'cafe', 'yogurt', 'frutas', 'verduras'],
+            'transporte': ['nafta', 'gasolina', 'combustible', 'taxi', 'uber', 'bus', 'bondi', 'colectivo', 'remis', 'metro', 'subte', 'tren', 'peaje', 'estacionamiento', 'parking'],
+            'servicios': ['luz', 'agua', 'gas', 'internet', 'telefono', 'ute', 'ose', 'antel', 'cable', 'netflix', 'spotify', 'wifi', 'celular', 'movil', 'tv', 'directv'],
+            'supermercado': ['super', 'market', 'tienda', 'almacen', 'supermercado', 'mercado', 'compras', 'abarrotes', 'verduleria', 'carniceria', 'panaderia'],
+            'salud': ['farmacia', 'medicina', 'doctor', 'medico', 'consulta', 'remedios', 'pastillas', 'dentista', 'oculista', 'hospital', 'clinica', 'analisis'],
+            'entretenimiento': ['cine', 'bar', 'juego', 'netflix', 'boliche', 'disco', 'teatro', 'concierto', 'show', 'partido', 'futbol', 'cancha', 'gym', 'gimnasio'],
+            'ropa': ['ropa', 'pantalon', 'camisa', 'remera', 'zapatos', 'zapatillas', 'vestido', 'pollera', 'jean', 'shorts', 'medias', 'ropa interior', 'campera', 'abrigo', 'sweater'],
+            'hogar': ['casa', 'hogar', 'muebles', 'decoracion', 'limpieza', 'detergente', 'jabon', 'shampoo', 'papel higienico', 'toallas', 'sabanas', 'almohadas'],
+            'tecnologia': ['celular', 'computadora', 'laptop', 'tablet', 'auriculares', 'cargador', 'cable', 'tecnologia', 'electronico', 'gadget'],
+            'educacion': ['libro', 'universidad', 'curso', 'carrera', 'estudio', 'educacion', 'escuela', 'colegio', 'materiales', 'fotocopias'],
         }
         
         # Buscar coincidencias
