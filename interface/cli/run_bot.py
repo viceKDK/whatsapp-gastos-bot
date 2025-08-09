@@ -170,40 +170,73 @@ class BotRunner:
     def _get_page_state_hash(self) -> Optional[str]:
         """
         Obtiene un hash del estado actual de la página para detectar cambios.
+        Solo incluye mensajes NO del bot para evitar loops.
         
         Returns:
-            Hash MD5 del estado actual de los últimos 5 mensajes, None si hay error
+            Hash MD5 del estado actual de los últimos mensajes de usuario, None si hay error
         """
         try:
             if not self.whatsapp_connector or not self.whatsapp_connector.connected:
                 return None
             
-            # Obtener los últimos 5 elementos del chat para generar el hash
+            # Obtener los últimos mensajes de forma optimizada
             if hasattr(self.whatsapp_connector, 'get_last_messages_for_hash'):
                 # Método optimizado que solo obtiene texto de últimos mensajes
-                elements_text = self.whatsapp_connector.get_last_messages_for_hash(count=5)
+                elements_text = self.whatsapp_connector.get_last_messages_for_hash(count=10)
             else:
-                # Fallback: obtener mensajes de forma tradicional
+                # Fallback: obtener mensajes de forma tradicional pero optimizada
                 try:
                     driver = self.whatsapp_connector.driver
                     if not driver:
                         return None
                     
-                    # Selector para mensajes (ajustar según la estructura actual de WhatsApp)
-                    message_selector = "div[data-testid='msg-container'] span[dir='ltr']"
-                    elements = driver.find_elements("css selector", message_selector)
+                    # Selector mejorado para mensajes
+                    message_selector = "div[data-testid='msg-container']"
+                    message_containers = driver.find_elements("css selector", message_selector)
                     
-                    # Tomar solo los últimos 5 mensajes
-                    elements_text = [elem.text.strip() for elem in elements[-5:] if elem.text.strip()]
+                    elements_text = []
+                    # Tomar los últimos 10 containers y extraer texto
+                    for container in message_containers[-10:]:
+                        try:
+                            text_elem = container.find_element("css selector", "span[dir='ltr']")
+                            text = text_elem.text.strip()
+                            if text:
+                                elements_text.append(text)
+                        except:
+                            continue
                 except Exception:
                     return None
             
             if not elements_text:
                 return None
             
-            # Crear hash del contenido
-            content = "|".join(elements_text)
-            return hashlib.md5(content.encode('utf-8')).hexdigest()
+            # FILTRAR mensajes del bot para evitar loops
+            filtered_messages = []
+            for text in elements_text:
+                # Usar filtro más directo para mensajes del bot en el hash
+                text_clean = text.strip()
+                is_bot_message = (
+                    text_clean.startswith('[OK]') or 
+                    text_clean.startswith('[ERROR]') or
+                    text_clean.startswith('[INFO]') or
+                    'gasto registrado' in text_clean.lower() or
+                    'se guardó' in text_clean.lower() or
+                    'registrado exitosamente' in text_clean.lower()
+                )
+                
+                if not is_bot_message:
+                    filtered_messages.append(text)
+            
+            # Si no hay mensajes de usuario, usar un hash especial
+            if not filtered_messages:
+                return "empty_user_messages"
+            
+            # Solo usar los últimos 3-5 mensajes reales de usuario para el hash
+            content = "|".join(filtered_messages[-5:])
+            hash_result = hashlib.md5(content.encode('utf-8')).hexdigest()
+            
+            self.logger.debug(f"Hash generado de {len(filtered_messages)} mensajes de usuario: {hash_result[:8]}...")
+            return hash_result
             
         except Exception as e:
             self.logger.debug(f"Error obteniendo hash de página: {e}")
@@ -405,49 +438,75 @@ class BotRunner:
                 self.stats['total_ciclos'] += 1
                 self.logger.debug(f"🆕 Página cambió - procesando nuevos mensajes (hash: {current_hash[:8]}...)")
             
-            # ⚡ NUEVA OPTIMIZACIÓN: Obtener timestamp del último mensaje procesado desde BD
-            last_processed = None
+            # ⚡ OPTIMIZACIÓN MEJORADA: Obtener timestamp del último mensaje procesado
+            last_processed_timestamp = None
             if hasattr(self.storage_repository, 'get_last_processed_timestamp'):
-                last_processed = self.storage_repository.get_last_processed_timestamp()
-                self.logger.info(f"📅 Último mensaje conocido en BD: {last_processed}")
+                last_processed_timestamp = self.storage_repository.get_last_processed_timestamp()
+                if last_processed_timestamp:
+                    self.logger.debug(f"📅 Último mensaje en BD: {last_processed_timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+                else:
+                    self.logger.debug("📅 No hay timestamp previo en BD")
             
-            # ⚡ USAR MÉTODO OPTIMIZADO que filtra por timestamp ANTES de parsear
+            # ⚡ USAR MÉTODO MÁS RESTRICTIVO para evitar reprocesar mensajes antiguos
             if hasattr(self.whatsapp_connector, 'get_new_messages_optimized'):
-                self.logger.info("🚀 USANDO BÚSQUEDA OPTIMIZADA POR TIMESTAMP...")
-                mensajes = self.whatsapp_connector.get_new_messages_optimized(last_processed)
+                self.logger.debug("🚀 Usando búsqueda optimizada por timestamp...")
+                mensajes = self.whatsapp_connector.get_new_messages_optimized(last_processed_timestamp)
             else:
-                # Fallback al método anterior si no está disponible
-                self.logger.debug("🔄 Fallback a método anterior...")
-                timeout = min(self.settings.whatsapp.poll_interval_seconds, 30)
+                # Método restrictivo: solo obtener mensajes muy recientes
+                self.logger.debug("🔄 Usando método restrictivo...")
+                timeout = min(self.settings.whatsapp.poll_interval_seconds, 15)  # Timeout más corto
                 mensajes = self.whatsapp_connector.wait_for_new_message(timeout)
                 if not mensajes:
+                    # Solo obtener mensajes nuevos, no todos
                     mensajes = self.whatsapp_connector.get_new_messages()
             
             if not mensajes:
                 self.logger.debug("ℹ️ No hay mensajes nuevos para procesar")
                 return
             
-            # ⚡ APLICAR FILTRO INTELIGENTE ANTES DE PROCESAMIENTO PESADO
+            # ⚡ FILTRO ESTRICTO: Aplicar múltiples capas de filtrado
             mensajes_filtrados = []
             mensajes_bot_ignorados = 0
+            mensajes_muy_antiguos = 0
+            
+            # Obtener timestamp de referencia (hace 2 horas máximo para procesar)
+            from datetime import timedelta
+            timestamp_limite = datetime.now() - timedelta(hours=2)
             
             for mensaje_texto, fecha_mensaje in mensajes:
+                # FILTRO 1: Verificar que no sea del bot
+                if self.message_filter._is_bot_message(mensaje_texto.strip()):
+                    mensajes_bot_ignorados += 1
+                    self.logger.debug(f"🤖 MENSAJE DEL BOT IGNORADO: '{mensaje_texto[:50]}...'")
+                    continue
+                
+                # FILTRO 2: Verificar que no sea muy antiguo (más de 2 horas)
+                if fecha_mensaje < timestamp_limite:
+                    mensajes_muy_antiguos += 1
+                    self.logger.debug(f"⏰ MENSAJE MUY ANTIGUO IGNORADO: '{mensaje_texto[:50]}...' ({fecha_mensaje})")
+                    continue
+                
+                # FILTRO 3: Usar el filtro inteligente estándar
                 if self.message_filter.should_process_message(mensaje_texto, fecha_mensaje):
+                    # FILTRO 4: Verificación final de caché
+                    if hasattr(self.storage_repository, 'should_process_message'):
+                        if not self.storage_repository.should_process_message(mensaje_texto, fecha_mensaje):
+                            self.logger.debug(f"⚡ FILTRO CACHÉ: Mensaje ya procesado '{mensaje_texto[:50]}...'")
+                            continue
+                    
                     mensajes_filtrados.append((mensaje_texto, fecha_mensaje))
                 else:
                     self.stats['mensajes_filtrados'] += 1
-                    # Verificar si es mensaje del bot para log específico
-                    if self.message_filter._is_bot_message(mensaje_texto.strip()):
-                        mensajes_bot_ignorados += 1
-                        self.logger.debug(f"🤖 MENSAJE DEL BOT IGNORADO: '{mensaje_texto[:50]}...'")
-                    else:
-                        self.logger.debug(f"⚡ FILTRADO: '{mensaje_texto[:50]}...' (confirmación/sistema)")
+                    self.logger.debug(f"⚡ FILTRO ESTÁNDAR: '{mensaje_texto[:50]}...'")
             
+            # Logs informativos sobre filtrado
             if mensajes_bot_ignorados > 0:
-                self.logger.info(f"🤖 {mensajes_bot_ignorados} mensajes del bot ignorados silenciosamente")
+                self.logger.info(f"🤖 {mensajes_bot_ignorados} mensajes del bot ignorados")
+            if mensajes_muy_antiguos > 0:
+                self.logger.info(f"⏰ {mensajes_muy_antiguos} mensajes antiguos ignorados (>2h)")
             
             if not mensajes_filtrados:
-                self.logger.info("ℹ️ Todos los mensajes fueron filtrados (confirmaciones/sistema)")
+                self.logger.debug("ℹ️ Todos los mensajes fueron filtrados")
                 return
             
             self.logger.info(f"🚀 PROCESANDO {len(mensajes_filtrados)} MENSAJES (filtrados {len(mensajes)-len(mensajes_filtrados)})")
@@ -458,13 +517,6 @@ class BotRunner:
                 
                 self.stats['mensajes_procesados'] += 1
                 self.stats['ultima_actividad'] = datetime.now()
-                
-                # ✅ VERIFICAR CACHÉ ANTES DE PROCESAR (OPTIMIZACIÓN CRÍTICA)
-                if hasattr(self.storage_repository, 'should_process_message'):
-                    should_process = self.storage_repository.should_process_message(mensaje_texto, fecha_mensaje)
-                    if not should_process:
-                        self.logger.info(f"⚡ MENSAJE SALTADO (ya procesado): '{mensaje_texto[:50]}...'")
-                        continue
                 
                 # Procesar con procesador avanzado
                 self.logger.debug(f"🧠 ENVIANDO A PROCESADOR AVANZADO...")
