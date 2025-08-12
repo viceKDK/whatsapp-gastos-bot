@@ -281,7 +281,37 @@ def get_settings() -> Settings:
     global _settings_instance
     
     if _settings_instance is None:
-        _settings_instance = Settings.load_from_env()
+        # PRIMERO: Intentar cargar desde YAML
+        try:
+            from config.config_manager import ConfigManager
+            config_manager = ConfigManager()
+            yaml_config = config_manager.get_config()
+            
+            # Crear Settings desde YAML
+            _settings_instance = Settings()
+            
+            # Aplicar configuración WhatsApp desde YAML
+            if hasattr(yaml_config, 'whatsapp'):
+                _settings_instance.whatsapp.target_chat_name = getattr(yaml_config.whatsapp, 'target_chat_name', 'Gastos')
+                _settings_instance.whatsapp.chrome_headless = getattr(yaml_config.whatsapp, 'chrome_headless', False)
+                _settings_instance.whatsapp.connection_timeout_seconds = getattr(yaml_config.whatsapp, 'connection_timeout_seconds', 60)
+                _settings_instance.whatsapp.poll_interval_seconds = getattr(yaml_config.whatsapp, 'message_polling_interval_seconds', 30)
+            
+            # Aplicar configuración Logging desde YAML
+            if hasattr(yaml_config, 'logging'):
+                level_str = getattr(yaml_config.logging, 'level', 'INFO')
+                if hasattr(LogLevel, level_str):
+                    _settings_instance.logging.level = LogLevel[level_str]
+                _settings_instance.logging.file_path = getattr(yaml_config.logging, 'file_path', 'logs/bot.log')
+                _settings_instance.logging.console_output = getattr(yaml_config.logging, 'console_enabled', True)
+                
+            print(f"[OK] Configuracion cargada desde YAML - headless: {_settings_instance.whatsapp.chrome_headless}")
+            
+        except Exception as e:
+            print(f"[WARN] Error cargando YAML, usando env vars: {e}")
+            # FALLBACK: Cargar desde variables de entorno
+            _settings_instance = Settings.load_from_env()
+        
         _settings_instance.ensure_directories_exist()
         
         # Validar configuración
@@ -302,3 +332,9 @@ def reload_settings() -> Settings:
     global _settings_instance
     _settings_instance = None
     return get_settings()
+
+
+def clear_settings_cache():
+    """Limpia el cache de configuración para forzar recarga."""
+    global _settings_instance
+    _settings_instance = None

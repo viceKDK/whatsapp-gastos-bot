@@ -108,7 +108,7 @@ class MessageFilter:
     
     def should_process_message(self, text: str, timestamp: Optional[datetime] = None) -> bool:
         """
-        ⚡ Determina si un mensaje debe ser procesado.
+        ⚡ Determina si un mensaje debe ser procesado con filtrado de texto carácter por carácter.
         
         Args:
             text: Texto del mensaje
@@ -117,17 +117,18 @@ class MessageFilter:
         Returns:
             True si el mensaje debe procesarse, False si debe omitirse
         """
-        logger.info(f"🔍 FILTRO DEBUG: Analizando mensaje '{text[:50]}...'")
+        logger.info(f"🔍 FILTRO DEBUG: Analizando mensaje...")
         
-        if not text or not text.strip():
+        if not text:
             logger.info("❌ FILTRO: Mensaje vacío - RECHAZADO")
             return False
         
-        # FILTRO PRIORITARIO: Ignorar mensajes del bot
-        # ⚡ REGLA SIMPLE: Si empieza con [ o "No", es mensaje del bot - RECHAZAR INMEDIATAMENTE
-        if text.strip().startswith('[') or text.strip().startswith('No'):
-            patron = "con [" if text.strip().startswith('[') else "con 'No'"
-            logger.info(f"🤖 FILTRO: Mensaje empieza {patron} - IGNORADO INMEDIATAMENTE")
+        # ⚡ FILTRADO CARÁCTER POR CARÁCTER - DETECCIÓN TEMPRANA
+        # Procesar carácter por carácter para detectar patrones de descarte temprano
+        early_rejection = self._early_character_rejection(text)
+        if early_rejection:
+            filter_type, position = early_rejection
+            logger.info(f"🚫 FILTRO TEMPRANO: {filter_type} detectado en posición {position} - RECHAZADO SIN EXTRAER TEXTO COMPLETO")
             return False
             
         if self._is_bot_message(text.strip()):
@@ -200,6 +201,114 @@ class MessageFilter:
         # Si pasa todos los filtros, debe procesarse
         logger.info("✅ FILTRO: Mensaje APROBADO para procesamiento")
         return True
+    
+    def _early_character_rejection(self, text: str) -> Optional[Tuple[str, int]]:
+        """
+        ⚡ Filtrado carácter por carácter para rechazar mensajes tempranamente.
+        
+        Procesa el texto carácter por carácter y retorna información de rechazo
+        tan pronto como detecta patrones de descarte ([ o "No").
+        
+        Args:
+            text: Texto completo del mensaje
+            
+        Returns:
+            Tupla (tipo_filtro, posición) si debe rechazarse, None si debe continuar
+        """
+        if not text:
+            return ("empty_message", 0)
+        
+        # Buffer para construir palabras
+        current_word = ""
+        position = 0
+        found_non_whitespace = False
+        
+        for i, char in enumerate(text):
+            position = i
+            
+            # Saltar espacios iniciales
+            if not found_non_whitespace and char.isspace():
+                continue
+            
+            # ⚡ DETECCIÓN INMEDIATA: Primer carácter no-espacio es '['
+            if not found_non_whitespace and char == '[':
+                return ("starts_with_bracket", position)
+            
+            # Marcar que encontramos contenido no-espacio
+            if not found_non_whitespace:
+                found_non_whitespace = True
+            
+            # ⚡ DETECCIÓN DE PALABRAS AL INICIO: "No" y "msg"
+            if char.isalpha() or char == '-':
+                current_word += char.lower()
+                
+                # Si llevamos 2 caracteres y es "no", verificar si es inicio de mensaje
+                if len(current_word) == 2 and current_word == "no":
+                    # Verificar que sea el comienzo del mensaje (solo espacios antes)
+                    prefix = text[:i-1].strip()  # Texto antes de esta palabra
+                    if not prefix:  # Es el comienzo del mensaje
+                        # Verificar siguiente carácter para confirmar "No "
+                        if i + 1 < len(text) and (text[i + 1].isspace() or not text[i + 1].isalpha()):
+                            return ("starts_with_no", position)
+                
+                # ⚡ DETECCIÓN DE "msg" AL INICIO (msg-check, msg-status, etc.)
+                elif len(current_word) == 3 and current_word == "msg":
+                    # Verificar que sea el comienzo del mensaje
+                    prefix = text[:i-2].strip()  # Texto antes de esta palabra
+                    if not prefix:  # Es el comienzo del mensaje
+                        # Verificar siguiente carácter (puede ser - o espacio)
+                        if i + 1 < len(text) and (text[i + 1] in ['-', ' ', ':'] or not text[i + 1].isalpha()):
+                            return ("starts_with_msg", position)
+                
+                # ⚡ DETECCIÓN MÁS ESPECÍFICA: "msg-check", "msg-status"
+                elif current_word.startswith("msg-") and len(current_word) >= 4:
+                    prefix = text[:i-len(current_word)+1].strip()
+                    if not prefix:  # Es el comienzo del mensaje
+                        return ("starts_with_msg_command", position)
+            
+            # Resetear word si encontramos espacio
+            elif char.isspace():
+                current_word = ""
+            
+            # ⚡ OPTIMIZACIÓN: Si hemos procesado más de 15 caracteres sin encontrar patrones
+            # de rechazo temprano, probablemente no es mensaje del bot
+            if i > 15:
+                break
+        
+        # ⚡ DETECCIÓN ADICIONAL: Patrones de emoji de confirmación al inicio
+        if self._starts_with_confirmation_emoji(text):
+            return ("confirmation_emoji", 0)
+        
+        return None  # No se detectó patrón de rechazo temprano
+    
+    def _starts_with_confirmation_emoji(self, text: str) -> bool:
+        """
+        Detecta si el mensaje empieza con emojis típicos de confirmación del bot.
+        
+        Args:
+            text: Texto del mensaje
+            
+        Returns:
+            True si empieza con emoji de confirmación
+        """
+        if not text:
+            return False
+        
+        # Saltar espacios iniciales
+        text_stripped = text.lstrip()
+        
+        if not text_stripped:
+            return False
+        
+        # Emojis típicos de respuestas del bot
+        confirmation_emojis = ["✅", "❌", "🤖", "💰", "🔄", "⏳", "🎯", "📊"]
+        
+        # Verificar si empieza con algún emoji de confirmación
+        for emoji in confirmation_emojis:
+            if text_stripped.startswith(emoji):
+                return True
+        
+        return False
     
     def _looks_like_expense(self, text: str) -> bool:
         """⚡ Detección rápida si parece un gasto (número + descripción)."""

@@ -56,6 +56,9 @@ class HybridStorage:
         self.logger.info(f"Hybrid storage initialized:")
         self.logger.info(f"  📊 Excel: {self.excel_path}")
         self.logger.info(f"  💾 SQLite cache: {sqlite_path}")
+        
+        # 🚀 SINCRONIZACIÓN INICIAL: Cachear gastos existentes en Excel para evitar reprocesamiento
+        self._sync_excel_to_cache()
     
     def should_process_message(self, message_text: str, message_timestamp: datetime) -> bool:
         """
@@ -99,19 +102,29 @@ class HybridStorage:
     
     def guardar_gasto(self, gasto: Gasto) -> bool:
         """
-        Guarda un gasto tanto en SQLite como en Excel.
+        Guarda un gasto tanto en SQLite como en Excel con detección de duplicados.
         
         Args:
             gasto: Gasto a guardar
             
         Returns:
-            True si se guardó exitosamente
+            True si se guardó exitosamente, False si es duplicado o hay error
         """
         try:
-            # 1. Guardar en SQLite
+            # ⚡ DETECCIÓN DE DUPLICADOS antes de guardar en cualquier storage
+            if self.sqlite_storage.is_duplicate_expense(gasto):
+                self.logger.warning(f"🚫 GASTO DUPLICADO RECHAZADO: ${gasto.monto} - {gasto.categoria}")
+                return False
+            
+            # 1. Guardar en SQLite (ya incluye su propia detección de duplicados)
             sqlite_success = self.sqlite_storage.guardar_gasto(gasto)
             
-            # 2. Guardar en Excel
+            # Si SQLite falló (posiblemente por duplicado), no guardar en Excel
+            if not sqlite_success:
+                self.logger.warning(f"❌ SQLite rechazó el gasto (posible duplicado): ${gasto.monto} - {gasto.categoria}")
+                return False
+            
+            # 2. Guardar en Excel solo si SQLite fue exitoso
             excel_success = self.excel_storage.guardar_gasto(gasto)
             
             # Solo retornar True si AMBOS guardaron exitosamente
@@ -119,12 +132,9 @@ class HybridStorage:
                 self.logger.info(f"✅ Gasto guardado en ambos storages: ${gasto.monto} - {gasto.categoria}")
                 return True
             else:
-                if not sqlite_success and not excel_success:
-                    self.logger.error(f"❌ Error guardando gasto en ambos storages: ${gasto.monto} - {gasto.categoria}")
-                elif not excel_success:
+                if not excel_success:
                     self.logger.error(f"❌ Error guardando gasto en Excel: ${gasto.monto} - {gasto.categoria}")
-                elif not sqlite_success:
-                    self.logger.error(f"❌ Error guardando gasto en SQLite: ${gasto.monto} - {gasto.categoria}")
+                    # TODO: Considerar rollback del SQLite en caso de falla de Excel
                 return False
                 
         except Exception as e:
@@ -288,6 +298,87 @@ class HybridStorage:
         except Exception as e:
             self.logger.error(f"Error obteniendo info híbrida: {e}")
             return {'error': str(e)}
+    
+    def _sync_excel_to_cache(self):
+        """
+        Sincroniza gastos existentes del Excel al cache para evitar reprocesamiento.
+        Crea mensajes sintéticos para gastos que ya existen.
+        """
+        try:
+            # Obtener gastos existentes del Excel
+            try:
+                stats = self.excel_storage.obtener_estadisticas()
+                if stats.get('total_gastos', 0) == 0:
+                    self.logger.info("📝 No hay gastos existentes en Excel - cache vacío")
+                    return
+            except:
+                self.logger.info("📝 No se pudo obtener stats de Excel - saltando sincronización")
+                return
+            
+            # Verificar si ya hay mensajes en cache
+            cache_count = self.sqlite_storage.get_cache_stats().get('total_cached', 0)
+            if cache_count > 0:
+                self.logger.info(f"💾 Cache ya tiene {cache_count} mensajes - saltando sincronización inicial")
+                return
+            
+            # Obtener gastos recientes (últimos 30 días para no sobrecargar)
+            from datetime import datetime, timedelta
+            fecha_limite = datetime.now() - timedelta(days=30)
+            
+            # Leer Excel directamente para obtener gastos recientes
+            try:
+                import pandas as pd
+                df = pd.read_excel(self.excel_path)
+                
+                if df.empty:
+                    return
+                
+                # Convertir fecha si es necesario
+                if 'Fecha' in df.columns:
+                    df['Fecha'] = pd.to_datetime(df['Fecha'])
+                    # Filtrar solo gastos recientes
+                    df = df[df['Fecha'] >= fecha_limite]
+                
+                synced_count = 0
+                for _, row in df.iterrows():
+                    # Crear mensaje sintético basado en el gasto
+                    monto = row.get('Monto', 0)
+                    categoria = row.get('Categoría', 'otros')
+                    descripcion = row.get('Descripción', '')
+                    fecha = row.get('Fecha')
+                    
+                    if pd.isna(fecha):
+                        continue
+                    
+                    # Crear mensaje sintético que represente este gasto
+                    synthetic_msg = f"{monto} {descripcion}".strip()
+                    if not synthetic_msg or synthetic_msg == str(monto):
+                        synthetic_msg = f"{monto} {categoria}"
+                    
+                    # Cachear como mensaje ya procesado
+                    try:
+                        self.sqlite_storage.cache_processed_message(
+                            synthetic_msg, 
+                            fecha,
+                            is_expense=True,
+                            expense_amount=float(monto),
+                            expense_category=categoria
+                        )
+                        synced_count += 1
+                    except Exception as e:
+                        self.logger.debug(f"Error cacheando gasto sintético: {e}")
+                        continue
+                
+                if synced_count > 0:
+                    self.logger.info(f"🔄 Sincronizados {synced_count} gastos existentes al cache")
+                else:
+                    self.logger.info("📝 No se encontraron gastos recientes para sincronizar")
+                    
+            except Exception as e:
+                self.logger.debug(f"Error leyendo Excel para sincronización: {e}")
+                
+        except Exception as e:
+            self.logger.error(f"Error en sincronización inicial: {e}")
 
 
 class AsyncHybridStorage:

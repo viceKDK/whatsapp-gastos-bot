@@ -1,257 +1,279 @@
-# 📖 Guía de Usuario - Bot Gastos WhatsApp
+# 📱 Bot Gastos WhatsApp - Guía del Usuario
 
-Esta guía te ayudará a usar el Bot Gastos WhatsApp de manera efectiva para automatizar el registro de tus gastos.
+## 🎯 ¿Qué hace el bot?
 
-## 🎯 ¿Qué hace el Bot?
+El **Bot Gastos WhatsApp** automatiza el registro de tus gastos personales. Solo tienes que escribir tu gasto en el chat de WhatsApp y el bot:
 
-El Bot Gastos WhatsApp automatiza el proceso de registro de gastos personales:
+1. ✅ **Detecta** automáticamente que es un gasto
+2. 🧠 **Extrae** el monto y categoría usando IA
+3. 💾 **Guarda** en Excel para tu control
+4. 📊 **Responde** confirmando el registro
 
-1. **Lee mensajes** de un chat específico de WhatsApp Web
-2. **Interpreta gastos** del texto natural que escribes
-3. **Guarda automáticamente** en Excel o base de datos
-4. **Organiza por categorías** tus gastos
+---
 
-## 💬 Cómo Escribir Mensajes de Gastos
+## 📝 Formatos de Mensajes Soportados
 
-### Formatos Soportados
+### 🔥 **Formato Básico** (más simple)
+```
+125 nafta
+500 comida
+1500 ropa
+80 super
+```
 
-El bot entiende estos formatos de mensajes:
+### 💬 **Formato Natural**
+```
+compre 2500 ropa
+compré 150 nafta
+gasté 300 en comida
+pagué 800 por zapatos
+gaste 120 almuerzo
+pague 1000 de luz
+```
 
+### 💰 **Con Signo de Pesos**
+```
+$150 nafta
+$ 500 comida
+$1200 supermercado
+```
+
+### 📋 **Formato Estructurado**
 ```
 gasto: 500 comida
-500 super
-gasté 150 nafta
-compré 75 entretenimiento
-pagué 1200 salud
-invertí 300 educacion
+gasto 300 delivery
+gastos: 1500 servicios
 ```
 
-### Elementos del Mensaje
+---
 
-**Monto:**
-- Puede incluir decimales: `150.50`
-- Sin símbolos de moneda: `500` (no `$500`)
-- Rango válido: $0.01 - $1,000,000
+## 🏷️ **Categorías Automáticas**
 
-**Categoría:**
-- Una sola palabra sin espacios
-- En minúsculas preferentemente
-- Debe ser una categoría válida (ver lista abajo)
+El bot reconoce automáticamente estas categorías según las palabras que uses:
 
-### Categorías Válidas
+### 🍕 **Comida**
+**Palabras clave:** comida, restaurant, almuerzo, cena, pizza, burger, delivery, desayuno, merienda, snack, hamburguer, empanadas, asado, parrilla, sandwich, cafe, yogurt, frutas, verduras
 
-**Categorías Principales:**
-- `comida` - Restaurantes, almuerzo, cena, snacks
-- `transporte` - Taxi, uber, combustible, transporte público
-- `entretenimiento` - Cine, streaming, juegos, diversión
-- `salud` - Médico, farmacia, medicina, gimnasio
-- `servicios` - Luz, gas, agua, internet, celular
-- `ropa` - Vestimenta, calzado, accesorios
-- `educacion` - Libros, cursos, materiales educativos
-- `hogar` - Muebles, electrodomésticos, decoración
-- `trabajo` - Materiales, herramientas, gastos laborales
-- `otros` - Gastos que no encajan en otras categorías
+**Ejemplos:**
+- `150 almuerzo` → Comida
+- `compré 300 pizza` → Comida  
+- `500 delivery` → Comida
 
-**Categorías Extendidas:**
-- `super` / `supermercado` - Compras de alimentos y productos
-- `nafta` / `combustible` - Gasolina, gas natural
-- `farmacia` - Medicamentos específicos
-- `cafe` - Café, bebidas
-- `impuestos` - Pagos de impuestos
-- `seguros` - Pólizas de seguro
+### 🚗 **Transporte**
+**Palabras clave:** nafta, gasolina, combustible, taxi, uber, bus, bondi, colectivo, remis, metro, subte, tren, peaje, estacionamiento, parking
 
-### Ejemplos Prácticos
+**Ejemplos:**
+- `125 nafta` → Transporte
+- `gasté 200 uber` → Transporte
+- `50 bondi` → Transporte
 
+### 🏠 **Servicios**  
+**Palabras clave:** luz, agua, gas, internet, telefono, ute, ose, antel, cable, netflix, spotify, wifi, celular, movil, tv, directv
+
+**Ejemplos:**
+- `pagué 1500 luz` → Servicios
+- `800 internet` → Servicios
+- `netflix 299` → Servicios
+
+### 🛒 **Supermercado**
+**Palabras clave:** super, market, tienda, almacen, supermercado, mercado, compras, abarrotes, verduleria, carniceria, panaderia
+
+**Ejemplos:**
+- `2000 super` → Supermercado
+- `compre 800 market` → Supermercado
+- `1200 compras` → Supermercado
+
+### 🏥 **Salud**
+**Palabras clave:** farmacia, medicina, doctor, medico, consulta, remedios, pastillas, dentista, oculista, hospital, clinica, analisis
+
+**Ejemplos:**
+- `350 farmacia` → Salud
+- `gasté 1200 doctor` → Salud
+- `500 remedios` → Salud
+
+### 🎭 **Entretenimiento**
+**Palabras clave:** cine, bar, juego, netflix, boliche, disco, teatro, concierto, show, partido, futbol, cancha, gym, gimnasio
+
+**Ejemplos:**
+- `400 cine` → Entretenimiento
+- `compré 800 gym` → Entretenimiento
+- `1200 boliche` → Entretenimiento
+
+### 👕 **Ropa**
+**Palabras clave:** ropa, pantalon, camisa, remera, zapatos, zapatillas, vestido, pollera, jean, shorts, medias, ropa interior, campera, abrigo, sweater
+
+**Ejemplos:**
+- `compre 2500 ropa` → Ropa ✨
+- `gasté 1800 zapatos` → Ropa
+- `800 remera` → Ropa
+
+### 🏡 **Hogar**
+**Palabras clave:** casa, hogar, muebles, decoracion, limpieza, detergente, jabon, shampoo, papel higienico, toallas, sabanas, almohadas
+
+**Ejemplos:**
+- `1500 muebles` → Hogar
+- `200 detergente` → Hogar
+- `compré 800 decoracion` → Hogar
+
+### 💻 **Tecnología**
+**Palabras clave:** celular, computadora, laptop, tablet, auriculares, cargador, cable, tecnologia, electronico, gadget
+
+**Ejemplos:**
+- `15000 celular` → Tecnología
+- `gasté 2500 laptop` → Tecnología
+- `300 auriculares` → Tecnología
+
+### 📚 **Educación**
+**Palabras clave:** libro, universidad, curso, carrera, estudio, educacion, escuela, colegio, materiales, fotocopias
+
+**Ejemplos:**
+- `800 universidad` → Educación
+- `compré 200 libro` → Educación
+- `150 fotocopias` → Educación
+
+---
+
+## 💡 **Consejos para Mejores Resultados**
+
+### ✅ **Sí funciona**
+- `125 nafta` 
+- `compre 2500 ropa`
+- `gasté 300 almuerzo`
+- `$150 super`
+- `pagué 800 doctor`
+
+### ❌ **No funciona bien**
+- `gastamos mucho` (sin monto específico)
+- `fue caro` (sin números)
+- `más o menos 200` (palabras extra confunden)
+
+### 🎯 **Tips**
+1. **Incluye números claros:** `150` mejor que `ciento cincuenta`
+2. **Usa palabras clave:** Incluye la categoría (`nafta`, `comida`, `ropa`)
+3. **Sé específico:** `125 nafta` mejor que `125 cosas del auto`
+4. **Formato consistente:** Stick to the patterns that work
+
+---
+
+## 📊 **Comandos Especiales**
+
+Envía estos mensajes para funciones especiales:
+
+- `ayuda` / `help` / `?` → Muestra ayuda
+- `estadisticas` / `stats` / `resumen` → Resumen de gastos
+- `categorias` → Lista de categorías válidas
+
+---
+
+## 🚀 **Ejemplos Completos**
+
+### Gastos del día típico:
 ```
-# ✅ Mensajes correctos
-gasto: 450 comida          → $450.00 en comida
-125 nafta                  → $125.00 en nafta  
-gasté 75.50 cafe          → $75.50 en cafe
-compré 2500 ropa          → $2,500.00 en ropa
-pagué 890 servicios       → $890.00 en servicios
-
-# ❌ Mensajes que NO funcionan
-$500 comida               → No incluir símbolo $
-500 comida rapida         → Categoría con espacios
-quinientos comida         → Monto debe ser numérico
-500                       → Falta categoría
+125 nafta
+300 almuerzo  
+80 super
+compré 1500 remera
+gasté 200 farmacia
+$50 cafe
 ```
 
-## 🔧 Configuración Básica
+### Resultado automático:
+- ✅ **125** - Transporte (nafta)
+- ✅ **300** - Comida (almuerzo) 
+- ✅ **80** - Supermercado (super)
+- ✅ **1500** - Ropa (remera)
+- ✅ **200** - Salud (farmacia)
+- ✅ **50** - Comida (cafe)
 
-### Chat de WhatsApp
+**Total gastado: $2,255** 💰
 
-1. **Crea un chat** en WhatsApp (puede ser contigo mismo)
-2. **Nómbralo exactamente** como está en tu configuración
-3. **Envía mensajes** solo en ese chat para gastos
+---
 
-### Variables Importantes
-
-En tu archivo `config/.env`:
-
-```bash
-# Nombre exacto del chat (¡muy importante!)
-TARGET_CHAT_NAME=Gastos Personal
-
-# Cada cuánto revisar mensajes (en segundos)
-WHATSAPP_POLL_INTERVAL=30
-
-# Mostrar ventana de Chrome (true) o ejecutar oculto (false)
-CHROME_HEADLESS=false
-```
-
-## 📊 Ver tus Gastos
+## ⚙️ **Configuración del Bot**
 
 ### Archivo Excel
+Los gastos se guardan automáticamente en: `data/gastos.xlsx`
 
-Los gastos se guardan automáticamente en `data/gastos.xlsx`:
+### Columnas generadas:
+- **Fecha** - Cuando se registró
+- **Hora** - Hora exacta
+- **Monto** - Cantidad gastada  
+- **Categoría** - Categoría detectada
+- **Descripción** - Descripción del gasto
 
-| Fecha      | Hora     | Monto   | Categoría | Descripción |
-|------------|----------|---------|-----------|-------------|
-| 2025-08-06 | 14:30:15 | $150.00 | comida    |             |
-| 2025-08-06 | 16:45:30 | $75.50  | nafta     |             |
+### Chat objetivo
+El bot escucha el chat configurado (por defecto: "Gastos")
 
-### Ver Estadísticas
+---
 
-```bash
-# Ver estadísticas del almacenamiento
-python main.py --test-storage
-```
+## 🔧 **Solución de Problemas**
 
-## 🚀 Uso Diario
+### ❓ **El bot no detecta mi gasto**
+**Posibles causas:**
+- No hay números claros en el mensaje
+- Falta palabra clave de categoría
+- Formato muy complejo
 
-### Rutina Típica
+**Solución:** Usa formato simple: `monto descripcion`
+- `❌ me gasté como 200 pesos en cosas` 
+- `✅ 200 comida`
 
-1. **Iniciar el bot por la mañana:**
-   ```bash
-   python main.py
-   ```
+### ❓ **Categoría incorrecta**
+**Causa:** La palabra clave no está en nuestro diccionario
 
-2. **Durante el día, enviar mensajes:**
-   ```
-   gasto: 250 comida       # Almuerzo
-   45 cafe                 # Café de la tarde  
-   500 super               # Compras del supermercado
-   ```
+**Solución:** Usa palabras más específicas:
+- `❌ compré 500 cosas` → "otros"
+- `✅ compré 500 remera` → "ropa"
 
-3. **El bot procesa automáticamente** y guarda en Excel
+### ❓ **No guarda en Excel**
+**Verificar:**
+1. ✅ Permisos de escritura en la carpeta `data/`
+2. ✅ Excel no está abierto (libera el archivo)
+3. ✅ Espacio disponible en disco
 
-4. **Al final del día** puedes ver el resumen en Excel
+---
 
-### Consejos de Uso
+## 📈 **Mejores Prácticas**
 
-**✅ Buenas Prácticas:**
-- Envía gastos inmediatamente después de realizarlos
-- Usa categorías consistentes
-- Revisa el archivo Excel semanalmente
-- Mantén el chat solo para gastos
+### 🎯 **Para máxima precisión:**
+1. **Sé específico:** `125 nafta` vs `125 auto`
+2. **Usa categorías conocidas:** Consulta la lista de palabras clave
+3. **Formato consistente:** Siempre `monto descripcion`
+4. **Evita palabras extra:** `200 almuerzo` vs `hoy gasté unos 200 en almuerzo`
 
-**⚠️ Evitar:**
-- Mensajes muy largos con múltiples gastos
-- Cambiar el nombre del chat frecuentemente
-- Usar el chat para conversaciones normales
-- Cerrar WhatsApp Web mientras el bot está activo
+### 📱 **Flujo recomendado:**
+1. Compras algo → Abres WhatsApp
+2. Escribes: `monto descripcion` 
+3. Envías mensaje
+4. ✅ Bot confirma registro automáticamente
+5. 📊 Revisas Excel cuando quieras
 
-## 📱 Uso en Móvil
+---
 
-Puedes enviar mensajes desde tu móvil al chat configurado, el bot los procesará cuando se sincronicen con WhatsApp Web.
+## 🆘 **Soporte**
 
-**Importante:** WhatsApp Web debe estar abierto y conectado para que el bot funcione.
+**¿Problemas?**
+1. Revisa esta guía primero
+2. Prueba formato simple: `125 nafta`
+3. Verifica que el bot esté ejecutándose
+4. Chequea los logs para errores específicos
 
-## 🔍 Verificación de Gastos
+**¿Ideas de mejora?**
+- Nuevas categorías
+- Formatos adicionales  
+- Funcionalidades extra
 
-### Comprobar si un Gasto se Registró
+---
 
-1. **Buscar en Excel:** Abre `data/gastos.xlsx` y busca tu gasto
-2. **Ver logs:** Revisa `logs/bot.log` para mensajes de confirmación
-3. **Usar comando:** `python main.py --test-storage` muestra estadísticas
+*💡 **Recuerda:** El bot aprende de tus patrones. Mientras más uses formatos consistentes, mejor será la detección automática.*
 
-### Mensajes de Confirmación
+---
 
-Cuando el bot está en modo visible, muestra confirmaciones:
+### 🔄 **Actualizaciones**
 
-```
-💰 14:30:15 - $150.00 en comida
-💰 16:45:30 - $75.50 en nafta
-```
+**v1.0** - Detección básica y guardado Excel  
+**v1.1** - Formatos expandidos ("compre", "gasté", "pagué")  
+**v1.2** - Categorías ampliadas (ropa, hogar, tecnología, educación)  
+**v1.3** - Soporte para signo de pesos ($)
 
-## 🚨 Qué Hacer si Algo No Funciona
-
-### Problemas Comunes
-
-**El bot no procesa mensajes:**
-1. Verifica que WhatsApp Web esté abierto
-2. Confirma el nombre exacto del chat
-3. Revisa que Chrome esté actualizado
-
-**Mensajes no se interpretan:**
-1. Usa el formato correcto: `monto categoría`
-2. Verifica que la categoría sea válida
-3. Asegúrate de que el monto sea numérico
-
-**Excel no se actualiza:**
-1. Cierra Excel si está abierto durante el procesamiento
-2. Verifica permisos de escritura en la carpeta `data/`
-3. Revisa los logs para errores específicos
-
-### Obtener Ayuda
-
-```bash
-# Ver configuración actual
-python main.py --config
-
-# Validar configuración
-python main.py --validate-config
-
-# Ver logs detallados
-python main.py --mode dev
-```
-
-## 📈 Análisis de Gastos
-
-### En Excel
-
-1. **Tablas dinámicas:** Crea resúmenes por categoría y fecha
-2. **Gráficos:** Visualiza tendencias de gastos
-3. **Filtros:** Analiza períodos específicos
-4. **Fórmulas:** Calcula totales y promedios
-
-### Preguntas Útiles para Análisis
-
-- ¿En qué categoría gasto más dinero?
-- ¿Cuál es mi promedio de gastos diarios?
-- ¿Cómo varían mis gastos por mes?
-- ¿Qué días de la semana gasto más?
-
-## 🎯 Consejos Avanzados
-
-### Optimizar Categorías
-
-Si frecuentemente usas categorías similares, puedes:
-
-1. **Estandarizar nombres:** Usa siempre `comida` en lugar de `almuerzo`
-2. **Crear aliases:** El bot puede mapear `restaurant` → `comida`
-3. **Agregar nuevas categorías** modificando la configuración
-
-### Backup Automático
-
-El bot crea backups automáticos de tu archivo Excel:
-- Ubicación: misma carpeta que el archivo principal
-- Formato: `gastos_backup_YYYYMMDD_HHMMSS.xlsx`
-- Frecuencia: configurable
-
-### Integración con Otros Sistemas
-
-Los datos en Excel se pueden exportar fácilmente a:
-- Aplicaciones de finanzas personales
-- Sistemas de contabilidad
-- Herramientas de análisis (Power BI, Tableau)
-
-## 📞 Soporte
-
-Si tienes problemas:
-
-1. **Revisa esta guía** para soluciones comunes
-2. **Consulta los logs** en `logs/bot.log`
-3. **Usa modo debug** con `python main.py --mode dev`
-4. **Contacta al desarrollador** con información específica del error
+¡Disfruta automatizando tus gastos! 🚀💰

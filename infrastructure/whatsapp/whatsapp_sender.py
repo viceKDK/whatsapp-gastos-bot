@@ -112,31 +112,28 @@ class WhatsAppMessageSender:
     
     def send_gasto_confirmation(self, gasto, confidence: float = None) -> bool:
         """
-        Envía confirmación de gasto registrado.
+        Envía confirmación de gasto registrado en una sola línea.
         
         Args:
             gasto: Objeto Gasto registrado
-            confidence: Confianza del procesamiento (opcional)
+            confidence: Confianza del procesamiento (opcional - IGNORADO)
             
         Returns:
             True si se envió correctamente
         """
         try:
-            # Formatear mensaje de confirmación
-            message_parts = [
-                "✅ *Gasto Registrado*",
-                f"💰 Monto: ${gasto.monto}",
-                f"📝 Categoría: {gasto.categoria}",
-                f"📅 Fecha: {gasto.fecha.strftime('%d/%m/%Y')}",
+            # Formatear mensaje de confirmación TODO EN UNA LÍNEA
+            parts = [
+                f"[OK] Gasto registrado (${gasto.monto} - {gasto.categoria})",
+                f"Fecha: {gasto.fecha.strftime('%d/%m/%Y')}"
             ]
             
-            if gasto.descripcion:
-                message_parts.append(f"📄 Descripción: {gasto.descripcion}")
+            # Solo agregar descripción si existe y no es igual a la categoría
+            if gasto.descripcion and gasto.descripcion.strip() and gasto.descripcion.lower() != gasto.categoria.lower():
+                parts.append(f"Desc: {gasto.descripcion}")
             
-            if confidence:
-                message_parts.append(f"🎯 Confianza: {confidence:.0%}")
-            
-            message = "\n".join(message_parts)
+            # Unir todo con " | " en una sola línea
+            message = " | ".join(parts)
             
             return self.send_text_message(message)
             
@@ -334,11 +331,43 @@ comida, transporte, entretenimiento, salud, servicios, ropa, educacion, hogar, t
         input_element.click()
         time.sleep(0.5)
         
+        # Limpiar caracteres no BMP (emojis complejos) que ChromeDriver no soporta
+        message_cleaned = self._clean_non_bmp_characters(message)
+        
         # Escribir mensaje con delay para simular tipeo
-        for char in message:
+        for char in message_cleaned:
             input_element.send_keys(char)
             if self.typing_delay > 0:
                 time.sleep(self.typing_delay)
+    
+    def _clean_non_bmp_characters(self, text: str) -> str:
+        """
+        Limpia caracteres fuera del Basic Multilingual Plane que ChromeDriver no soporta.
+        
+        Args:
+            text: Texto original
+            
+        Returns:
+            Texto limpio compatible con ChromeDriver
+        """
+        # Reemplazar emojis complejos con texto simple
+        replacements = {
+            '✅': '[OK]',
+            '💰': '$',
+            '📝': 'Cat:',
+            '📅': 'Fecha:',
+            '📄': 'Desc:',
+            '🎯': 'Conf:',
+        }
+        
+        cleaned = text
+        for emoji, replacement in replacements.items():
+            cleaned = cleaned.replace(emoji, replacement)
+        
+        # Filtrar cualquier otro caracter fuera del BMP (Unicode > U+FFFF)
+        cleaned = ''.join(char for char in cleaned if ord(char) <= 0xFFFF)
+        
+        return cleaned
     
     def _verify_message_sent(self) -> bool:
         """

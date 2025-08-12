@@ -22,19 +22,49 @@ from interface.cli.run_bot import BotRunner
 
 def setup_signal_handlers(bot_runner: Optional['BotRunner'] = None) -> None:
     """
-    Configura manejadores de señales para shutdown limpio.
+    Configura manejadores de señales para shutdown NUCLEAR.
     
     Args:
         bot_runner: Instancia del bot para shutdown limpio
     """
     def signal_handler(signum, frame):
-        logger = get_logger(__name__)
-        logger.info(f"Señal {signum} recibida, cerrando aplicación...")
+        print("\n💀 CTRL+C DETECTADO - TERMINACIÓN NUCLEAR...")  # Print directo, sin logger
         
+        # 🚀 FASE 1: MATAR CHROME INMEDIATAMENTE (SIN TIMEOUT)
+        try:
+            import subprocess
+            import platform
+            
+            if platform.system() == "Windows":
+                # Kill ALL browser processes sin timeout ni logs
+                for process in ['chrome.exe', 'chromedriver.exe', 'msedgedriver.exe']:
+                    subprocess.run(['taskkill', '/F', '/IM', process, '/T'], 
+                                 capture_output=True, timeout=1)
+        except:
+            pass
+        
+        # 🚀 FASE 2: STOP BOT CON TIMEOUT MÍNIMO (1 segundo máximo)
         if bot_runner:
-            bot_runner.stop()
+            import threading
+            
+            stop_success = [False]
+            def nuclear_stop():
+                try:
+                    bot_runner.stop()
+                    stop_success[0] = True
+                except:
+                    pass
+            
+            stop_thread = threading.Thread(target=nuclear_stop, daemon=True)
+            stop_thread.start()
+            stop_thread.join(timeout=1.0)  # Solo 1 segundo
+            
+            # Si no termina en 1 segundo, exit forzado
         
-        sys.exit(0)
+        # 🚀 FASE 3: EXIT INMEDIATO SIN MÁS DELAYS
+        print("💀 SALIDA FORZADA")
+        import os
+        os._exit(0)  # Exit más agresivo que sys.exit()
     
     signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)  # Terminación
@@ -204,12 +234,12 @@ def test_storage() -> bool:
             print("Prueba SQLite no implementada aún")
             return False
         
-        print("✅ Prueba de almacenamiento exitosa")
+        print("[OK] Prueba de almacenamiento exitosa")
         return True
         
     except Exception as e:
         logger.error(f"Error en prueba de almacenamiento: {e}")
-        print(f"❌ Error en prueba: {e}")
+        print(f"[ERROR] Error en prueba: {e}")
         return False
 
 
@@ -227,16 +257,16 @@ def validate_config() -> bool:
         print("=== VALIDACIÓN DE CONFIGURACIÓN ===")
         
         if not errors:
-            print("✅ Configuración válida")
+            print("[OK] Configuracion valida")
             return True
         else:
-            print("❌ Errores encontrados:")
+            print("[ERROR] Errores encontrados:")
             for error in errors:
                 print(f"  - {error}")
             return False
             
     except Exception as e:
-        print(f"❌ Error validando configuración: {e}")
+        print(f"[ERROR] Error validando configuracion: {e}")
         return False
 
 
@@ -266,15 +296,15 @@ def run_dashboard_mode(args) -> int:
         return 0
         
     except ImportError as e:
-        print(f"❌ Error: Dependencias del dashboard no están instaladas")
-        print(f"📦 Instala con: pip install flask flask-cors")
+        print(f"[ERROR] Error: Dependencias del dashboard no estan instaladas")
+        print(f"[INFO] Instala con: pip install flask flask-cors")
         return 1
     except KeyboardInterrupt:
         print("\n👋 Dashboard detenido por usuario")
         return 0
     except Exception as e:
         logger.error(f"Error ejecutando dashboard: {e}")
-        print(f"❌ Error: {e}")
+        print(f"[ERROR] Error: {e}")
         return 1
 
 

@@ -593,11 +593,15 @@ class RedisMLCache:
             'model_version': model_version
         }
         
+        # TTL inteligente basado en confianza  
+        adaptive_ttl = max(600, int(ttl * (confidence / 100) * 2))  # Min 10 min, max basado en confianza
+        final_ttl = adaptive_ttl if ttl == 3600 else ttl  # Usar adaptivo solo si es TTL por defecto
+        
         return self.redis_cache.set(
             self.namespace, 
             cache_key, 
             cache_data, 
-            ttl=ttl,
+            ttl=final_ttl,
             cache_type="ml_prediction"
         )
     

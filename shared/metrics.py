@@ -599,3 +599,144 @@ def get_system_health() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error obteniendo estado de salud: {e}")
         return {'status': 'error', 'error': str(e)}
+
+
+# ⚡ OPTIMIZACIÓN: Métricas específicas según el documento de optimización
+PERFORMANCE_METRICS_OPTIMIZED = {
+    'regex_processing_time_ms': 'histogram',
+    'dom_search_time_ms': 'histogram', 
+    'nlp_categorization_time_ms': 'histogram',
+    'db_write_time_ms': 'histogram',
+    'message_parsing_time_ms': 'histogram',
+    'batch_processing_time_ms': 'histogram',
+    'cache_lookup_time_ms': 'histogram',
+    'cache_hit_rate': 'gauge',
+    'messages_per_second': 'gauge'
+}
+
+
+class OptimizationMetricsCollector:
+    """⚡ Collector especializado para métricas de optimización."""
+    
+    def __init__(self):
+        self.base_collector = get_metrics_collector()
+        self.optimization_baselines = {
+            # Baselines pre-optimización (ms)
+            'regex_processing_time_ms': 150.0,
+            'dom_search_time_ms': 300.0,
+            'nlp_categorization_time_ms': 300.0,
+            'db_write_time_ms': 200.0,
+            'message_parsing_time_ms': 100.0,
+            'batch_processing_time_ms': 500.0,
+            'cache_lookup_time_ms': 50.0,
+        }
+        
+        self.improvement_tracking = defaultdict(list)
+        self.logger = logger
+    
+    def record_optimization_metric(self, metric_name: str, value_ms: float, **tags):
+        """
+        ⚡ Registra métrica de optimización con cálculo automático de mejora.
+        
+        Args:
+            metric_name: Nombre de la métrica (ej: 'regex_processing_time_ms')
+            value_ms: Valor en milisegundos
+            **tags: Tags adicionales
+        """
+        # Registrar en sistema base
+        self.base_collector.record_custom_metric(metric_name, value_ms, **tags)
+        
+        # Calcular mejora vs baseline
+        baseline = self.optimization_baselines.get(metric_name)
+        if baseline:
+            improvement_pct = ((baseline - value_ms) / baseline) * 100
+            speedup = baseline / value_ms if value_ms > 0 else 1.0
+            
+            # Trackear mejora
+            self.improvement_tracking[metric_name].append({
+                'timestamp': datetime.now(),
+                'value_ms': value_ms,
+                'baseline_ms': baseline,
+                'improvement_pct': improvement_pct,
+                'speedup_factor': speedup
+            })
+            
+            # Registrar métricas de mejora
+            self.base_collector.record_custom_metric(
+                f"{metric_name}_improvement_pct", 
+                improvement_pct, 
+                optimization=metric_name, **tags
+            )
+            self.base_collector.record_custom_metric(
+                f"{metric_name}_speedup_factor", 
+                speedup, 
+                optimization=metric_name, **tags
+            )
+    
+    def get_optimization_summary(self) -> Dict[str, Any]:
+        """🎯 Obtiene resumen completo de optimizaciones."""
+        summary = {}
+        
+        for metric_name, tracking_data in self.improvement_tracking.items():
+            if tracking_data:
+                recent_data = tracking_data[-10:]  # Últimos 10 valores
+                
+                avg_improvement = statistics.mean([d['improvement_pct'] for d in recent_data])
+                avg_speedup = statistics.mean([d['speedup_factor'] for d in recent_data])
+                current_value = recent_data[-1]['value_ms']
+                baseline_value = recent_data[-1]['baseline_ms']
+                
+                summary[metric_name] = {
+                    'current_avg_ms': current_value,
+                    'baseline_ms': baseline_value,
+                    'improvement_percent': f"{avg_improvement:.1f}%",
+                    'speedup_factor': f"{avg_speedup:.1f}x",
+                    'samples_count': len(recent_data),
+                    'status': self._get_optimization_status(avg_improvement)
+                }
+        
+        return {
+            'optimization_summary': summary,
+            'overall_status': self._get_overall_status(summary),
+            'generated_at': datetime.now().isoformat()
+        }
+    
+    def _get_optimization_status(self, improvement_pct: float) -> str:
+        """Determina estado de la optimización."""
+        if improvement_pct >= 50:
+            return "excellent"
+        elif improvement_pct >= 25:
+            return "good"
+        elif improvement_pct >= 10:
+            return "moderate"
+        elif improvement_pct >= 0:
+            return "minimal"
+        else:
+            return "degraded"
+    
+    def _get_overall_status(self, summary: Dict) -> str:
+        """Determina estado general de optimizaciones."""
+        if not summary:
+            return "no_data"
+        
+        statuses = [opt['status'] for opt in summary.values() if isinstance(opt, dict)]
+        excellent_count = statuses.count('excellent')
+        good_count = statuses.count('good')
+        
+        if excellent_count >= len(statuses) * 0.7:
+            return "highly_optimized"
+        elif (excellent_count + good_count) >= len(statuses) * 0.6:
+            return "well_optimized"
+        else:
+            return "needs_improvement"
+
+
+# Instancia global del collector de optimizaciones
+_optimization_collector: Optional[OptimizationMetricsCollector] = None
+
+def get_optimization_collector() -> OptimizationMetricsCollector:
+    """Obtiene instancia global del collector de optimizaciones."""
+    global _optimization_collector
+    if _optimization_collector is None:
+        _optimization_collector = OptimizationMetricsCollector()
+    return _optimization_collector

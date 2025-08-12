@@ -21,6 +21,11 @@ import psutil
 
 from shared.logger import get_logger
 from shared.metrics import get_metrics_collector
+from infrastructure.clustering.multi_chat_optimizer import (
+    get_multi_chat_optimizer, 
+    ChatPriority,
+    MultiChatOptimizer
+)
 
 
 logger = get_logger(__name__)
@@ -191,7 +196,9 @@ class WhatsAppCluster:
     def __init__(self, 
                  max_instances: int = 3,
                  distribution_strategy: MessageDistributionStrategy = MessageDistributionStrategy.HEALTH_BASED,
-                 heartbeat_interval: int = 10):
+                 heartbeat_interval: int = 10,
+                 enable_multi_chat: bool = True,
+                 chat_balancing: bool = True):
         """
         Inicializa cluster de bots WhatsApp.
         
@@ -199,9 +206,13 @@ class WhatsAppCluster:
             max_instances: Número máximo de instancias del bot
             distribution_strategy: Estrategia de distribución de mensajes
             heartbeat_interval: Intervalo de heartbeat en segundos
+            enable_multi_chat: Habilita soporte para múltiples chats
+            chat_balancing: Habilita balanceado por chat
         """
         self.max_instances = max_instances
         self.heartbeat_interval = heartbeat_interval
+        self.enable_multi_chat = enable_multi_chat
+        self.chat_balancing = chat_balancing
         
         # Instancias del cluster
         self.instances: Dict[str, BotInstance] = {}
@@ -209,6 +220,11 @@ class WhatsAppCluster:
         # Distribución de mensajes
         self.message_distributor = MessageDistributor(distribution_strategy)
         self.pending_messages = queue.PriorityQueue()
+        
+        # Multi-chat support
+        self.chat_assignments: Dict[str, str] = {}  # chat_id -> instance_id
+        self.chat_load_balance: Dict[str, int] = {}  # chat_id -> message_count
+        self.instance_chats: Dict[str, List[str]] = {}  # instance_id -> [chat_ids]
         
         # Threading para operaciones asíncronas
         self.executor = ThreadPoolExecutor(max_workers=max_instances * 2, thread_name_prefix="Cluster")
@@ -220,13 +236,22 @@ class WhatsAppCluster:
             'total_messages_failed': 0,
             'average_cluster_load': 0.0,
             'active_instances': 0,
-            'message_queue_size': 0
+            'message_queue_size': 0,
+            'active_chats': 0,
+            'chat_distribution': {},
+            'multi_chat_efficiency': 0.0
         }
         
         self.metrics_collector = get_metrics_collector()
         self.logger = logger
         
-        self.logger.info(f"WhatsAppCluster inicializado - Máx instancias: {max_instances}")
+        # Multi-chat optimizer
+        if self.enable_multi_chat:
+            self.multi_chat_optimizer = get_multi_chat_optimizer()
+        else:
+            self.multi_chat_optimizer = None
+        
+        self.logger.info(f"WhatsAppCluster inicializado - Máx instancias: {max_instances}, Multi-chat: {enable_multi_chat}")
     
     def start_cluster(self):
         """⚡ Inicia el sistema de clustering."""
@@ -244,12 +269,20 @@ class WhatsAppCluster:
         # Iniciar worker de métricas
         self.executor.submit(self._metrics_collection_worker)
         
+        # Iniciar multi-chat optimizer si está habilitado
+        if self.multi_chat_optimizer:
+            self.multi_chat_optimizer.start_monitoring()
+        
         self.logger.info("✅ WhatsApp Cluster iniciado")
     
     def stop_cluster(self):
         """Detiene el cluster de manera segura."""
         self.logger.info("Deteniendo WhatsApp Cluster...")
         self.running = False
+        
+        # Detener multi-chat optimizer
+        if self.multi_chat_optimizer:
+            self.multi_chat_optimizer.stop_monitoring()
         
         # Procesar mensajes pendientes
         self._process_pending_messages()
@@ -311,6 +344,18 @@ class WhatsAppCluster:
         
         self.cluster_stats['message_queue_size'] = self.pending_messages.qsize()
         
+        # Actualizar estadísticas multi-chat
+        if self.enable_multi_chat and self.multi_chat_optimizer:
+            self.cluster_stats['active_chats'] = len([c for c in self.multi_chat_optimizer.load_balancer.chat_metrics.values() if c.is_active])
+            
+            # Distribución de chats por instancia
+            for instance_id, chats in self.instance_chats.items():
+                self.cluster_stats['chat_distribution'][instance_id] = len(chats)
+            
+            # Eficiencia multi-chat
+            optimization_report = self.multi_chat_optimizer.get_optimization_report()
+            self.cluster_stats['multi_chat_efficiency'] = optimization_report['optimization_metrics']['load_distribution_score']
+        
         self.logger.debug(f"📨 Mensaje encolado: {message.message_id} (prioridad {priority})")
         return message.message_id
     
@@ -326,9 +371,8 @@ class WhatsAppCluster:
                 except queue.Empty:
                     continue
                 
-                # Seleccionar instancia óptima
-                available_instances = list(self.instances.values())
-                selected_instance = self.message_distributor.select_instance(available_instances, message)
+                # Seleccionar instancia óptima con balanceo multi-chat
+                selected_instance = self._select_instance_for_chat(message)
                 
                 if not selected_instance:
                     # No hay instancias disponibles, re-encolar
@@ -350,6 +394,55 @@ class WhatsAppCluster:
                 time.sleep(1.0)
         
         self.logger.info("🛑 Message distribution worker terminado")
+    
+    def _select_instance_for_chat(self, message: ClusterMessage) -> Optional[BotInstance]:
+        """
+        ⚡ Selecciona instancia óptima considerando multi-chat balancing.
+        
+        Args:
+            message: Mensaje con chat_id
+            
+        Returns:
+            Instancia seleccionada o None si no hay disponibles
+        """
+        available_instances = [inst for inst in self.instances.values() if inst.is_available]
+        
+        if not available_instances:
+            return None
+        
+        # Si multi-chat está habilitado, usar optimizador avanzado
+        if self.multi_chat_optimizer and self.enable_multi_chat:
+            # Determinar prioridad del chat basado en el mensaje
+            priority = ChatPriority.NORMAL
+            if message.priority == 1:
+                priority = ChatPriority.HIGH
+            elif message.priority >= 3:
+                priority = ChatPriority.LOW
+            
+            # Obtener asignación óptima
+            available_instance_ids = [inst.instance_id for inst in available_instances]
+            selected_instance_id = self.multi_chat_optimizer.assign_chat(
+                message.chat_id, available_instance_ids, priority
+            )
+            
+            # Encontrar instancia correspondiente
+            for instance in available_instances:
+                if instance.instance_id == selected_instance_id:
+                    
+                    # Actualizar estructuras internas del cluster
+                    self.chat_assignments[message.chat_id] = selected_instance_id
+                    self.chat_load_balance[message.chat_id] = self.chat_load_balance.get(message.chat_id, 0) + 1
+                    
+                    if selected_instance_id not in self.instance_chats:
+                        self.instance_chats[selected_instance_id] = []
+                    
+                    if message.chat_id not in self.instance_chats[selected_instance_id]:
+                        self.instance_chats[selected_instance_id].append(message.chat_id)
+                    
+                    return instance
+        
+        # Fallback al distribuidor tradicional
+        return self.message_distributor.select_instance(available_instances, message)
     
     def _process_message_on_instance(self, message: ClusterMessage, instance: BotInstance) -> bool:
         """
@@ -392,6 +485,14 @@ class WhatsAppCluster:
                 chat_id=message.chat_id
             )
             
+            # Actualizar métricas de multi-chat optimizer
+            if self.multi_chat_optimizer:
+                self.multi_chat_optimizer.update_chat_activity(
+                    message.chat_id, 
+                    processing_time * 1000,  # Convertir a ms
+                    error=False
+                )
+            
             instance.update_heartbeat()
             
             return True
@@ -403,6 +504,13 @@ class WhatsAppCluster:
             self.cluster_stats['total_messages_failed'] += 1
             
             self.logger.error(f"❌ Error procesando mensaje {message.message_id} en instancia {instance.instance_id}: {e}")
+            
+            # Actualizar métricas de error en multi-chat optimizer
+            if self.multi_chat_optimizer:
+                self.multi_chat_optimizer.update_chat_activity(
+                    message.chat_id, 
+                    error=True
+                )
             
             # Re-intentar en otra instancia si hay retries disponibles
             if message.retries < message.max_retries:
@@ -445,6 +553,12 @@ class WhatsAppCluster:
                 
                 # Actualizar estadísticas del cluster
                 self._update_cluster_stats()
+                
+                # Rebalancear multi-chat si es necesario
+                if self.multi_chat_optimizer and self.chat_balancing:
+                    available_instance_ids = [inst.instance_id for inst in self.instances.values() 
+                                            if inst.status != BotStatus.OFFLINE]
+                    self.multi_chat_optimizer.rebalance_chats(available_instance_ids)
                 
                 time.sleep(min(self.heartbeat_interval, 2))  # Max 2 segundos para tests
                 

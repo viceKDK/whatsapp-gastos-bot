@@ -1,9 +1,8 @@
 whatsapp:
   target_chat_name: Gastos
-  chrome_headless: false
-  chrome_user_data_dir: "C:\\Chrome\\WABot"
+  chrome_headless: true
   connection_timeout_seconds: 60
-  message_polling_interval_seconds: 5
+  message_polling_interval_seconds: 15
   chrome_profile_path: null
   max_reconnection_attempts: 3
 storage:
@@ -14,12 +13,12 @@ storage:
   backup_interval_hours: 24
   max_backup_files: 10
 logging:
-  level: DEBUG
+  level: INFO
   file_path: logs/bot_gastos.log
   max_file_size_mb: 10
   backup_count: 5
   format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-  console_enabled: true
+  console_enabled: false
 ocr:
   enabled: true
   language: spa+eng
