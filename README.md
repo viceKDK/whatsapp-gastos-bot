@@ -197,26 +197,13 @@ python main.py --mode dev
 tail -f logs/bot.log
 ```
 
-## 🚧 Estado del Proyecto
-
-**✅ Implementado:**
-- Arquitectura completa en capas
-- Procesamiento de mensajes
-- Almacenamiento Excel
-- Sistema de configuración
-- Logging robusto
-- CLI completa
-
-**🚧 En Desarrollo:**
-- Integración real con WhatsApp Web (Selenium)
-- Almacenamiento SQLite
-- GUI opcional
+## 🚧 Estado del Proyecto en el futuro
 
 **🔮 Futuro:**
 - OCR para tickets de compra
 - Estadísticas automáticas
 - API REST
-- Notificaciones
+
 
 ## 📝 Contribuir
 
