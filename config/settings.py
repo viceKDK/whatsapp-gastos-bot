@@ -44,17 +44,17 @@ class ExcelConfig:
 @dataclass
 class WhatsAppConfig:
     """Configuración de WhatsApp."""
-    poll_interval_seconds: int = 30
-    connection_timeout_seconds: int = 10
+    poll_interval_seconds: int = 1
+    connection_timeout_seconds: int = 5
     target_chat_name: str = "Gastos"
     chrome_headless: bool = False
     max_retry_attempts: int = 3
-    retry_delay_seconds: int = 5
-    
+    retry_delay_seconds: int = 1
+
     # Configuración de respuestas automáticas
     auto_responses_enabled: bool = True
-    response_delay_seconds: float = 2.0
-    typing_delay_seconds: float = 0.1
+    response_delay_seconds: float = 0.3
+    typing_delay_seconds: float = 0.03
     send_confirmations: bool = True
     send_error_notifications: bool = True
     send_suggestions: bool = True
@@ -193,11 +193,11 @@ class Settings:
         errors = []
         
         # Validar intervalos
-        if self.whatsapp.poll_interval_seconds < 5:
-            errors.append("El intervalo de polling no puede ser menor a 5 segundos")
-        
-        if self.whatsapp.connection_timeout_seconds < 5:
-            errors.append("El timeout de conexión no puede ser menor a 5 segundos")
+        if self.whatsapp.poll_interval_seconds < 1:
+            errors.append("El intervalo de polling no puede ser menor a 1 segundo")
+
+        if self.whatsapp.connection_timeout_seconds < 3:
+            errors.append("El timeout de conexión no puede ser menor a 3 segundos")
         
         # Validar paths
         try:

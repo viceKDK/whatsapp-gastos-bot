@@ -1,8 +1,8 @@
 whatsapp:
   target_chat_name: Gastos
   chrome_headless: true
-  connection_timeout_seconds: 60
-  message_polling_interval_seconds: 15
+  connection_timeout_seconds: 10
+  message_polling_interval_seconds: 1
   chrome_profile_path: null
   max_reconnection_attempts: 3
 storage:

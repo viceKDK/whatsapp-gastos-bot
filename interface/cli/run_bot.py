@@ -232,21 +232,22 @@ class BotRunner:
             self.whatsapp_connector = WhatsAppEnhancedConnector(self.settings.whatsapp)
             
             # Intentar conexión
+            self.logger.info("🚀 Conectando a WhatsApp Web (detección instantánea activada)...")
             if self.whatsapp_connector.connect():
                 # Configurar respuestas automáticas
                 self.whatsapp_connector.enable_auto_responses(
                     self.settings.whatsapp.auto_responses_enabled
                 )
                 self.whatsapp_connector.response_delay = self.settings.whatsapp.response_delay_seconds
-                
+
                 if self.whatsapp_connector.sender:
                     self.whatsapp_connector.sender.typing_delay = self.settings.whatsapp.typing_delay_seconds
                     self.whatsapp_connector.sender.send_delay = self.settings.whatsapp.response_delay_seconds
-                
-                self.logger.info("WhatsApp Enhanced connector inicializado correctamente")
+
+                self.logger.info("✅ WhatsApp Enhanced connector inicializado (modo ultra-rápido)")
                 return True
             else:
-                self.logger.error("Error conectando con WhatsApp Web")
+                self.logger.error("❌ Error conectando con WhatsApp Web")
                 return False
                 
         except Exception as e:

@@ -1106,7 +1106,7 @@ class WhatsAppSeleniumConnector:
                 self.chat_selected = False
             return []
     
-    def wait_for_new_message(self, timeout_seconds: int = 30) -> List[Tuple[str, datetime]]:
+    def wait_for_new_message(self, timeout_seconds: int = 10) -> List[Tuple[str, datetime]]:
         """
         Espera activamente por nuevos mensajes usando WebDriverWait.
         
@@ -1191,7 +1191,7 @@ class WhatsAppSeleniumConnector:
             return []
     
     def _setup_chrome_options(self) -> Options:
-        """Configura opciones de Chrome para WhatsApp Web usando perfil dedicado."""
+        """Configura opciones de Chrome para WhatsApp Web con optimización de RAM."""
         options = Options()
 
         # Headless solo si ya tenés la sesión guardada (no recomendado para el primer login)
@@ -1199,8 +1199,35 @@ class WhatsAppSeleniumConnector:
             # headless "nuevo" evita algunos problemas
             options.add_argument("--headless=new")
 
+        # === OPTIMIZACIONES DE RAM Y PERFORMANCE ===
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")  # Ahorra GPU RAM
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        
+        # Límites de memoria más estrictos
+        options.add_argument("--memory-pressure-off")
+        options.add_argument("--max_old_space_size=1024")  # Límite de JS heap a 1GB
+        options.add_argument("--aggressive-cache-discard")
+        
+        # Deshabilitar características innecesarias para WhatsApp
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-plugins")
+        options.add_argument("--disable-images")  # No cargar imágenes (solo texto)
+        options.add_argument("--disable-javascript-harmony-shipping")
+        options.add_argument("--disable-client-side-phishing-detection")
+        
+        # Configuración de red optimizada
+        options.add_argument("--aggressive-cache-discard")
+        options.add_argument("--disable-background-networking")
+        
+        # Configuración de ventana mínima si no es headless
+        if not getattr(self.config, "chrome_headless", False):
+            options.add_argument("--window-size=800,600")  # Ventana pequeña
+        
         options.add_argument("--remote-allow-origins=*")
 
         # === PERFIL DEL BOT (NO el Default) ===
@@ -1210,6 +1237,22 @@ class WhatsAppSeleniumConnector:
         # Cosas menores de automatización
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
+        
+        # Configurar prefs para menor consumo
+        prefs = {
+            "profile.default_content_setting_values": {
+                "images": 2,  # Bloquear imágenes
+                "plugins": 2,  # Bloquear plugins
+                "popups": 2,   # Bloquear popups
+                "geolocation": 2,  # Bloquear geolocalización
+                "notifications": 2,  # Bloquear notificaciones
+                "media_stream": 2,  # Bloquear media stream
+            },
+            "profile.managed_default_content_settings": {
+                "images": 2
+            }
+        }
+        options.add_experimental_option("prefs", prefs)
 
         return options
     
@@ -1282,7 +1325,7 @@ class WhatsAppSeleniumConnector:
                 # Si no hay pestaña de WhatsApp, navegar en la pestaña actual
                 self.logger.info("🌐 Navegando a WhatsApp Web en pestaña actual...")
                 self.driver.get("https://web.whatsapp.com")
-                time.sleep(3)
+                time.sleep(0.5)
                 self.logger.info(f"📍 Nueva URL: {self.driver.current_url}")
             
             self.logger.info("✅ Adjuntado exitosamente a Chrome existente!")
@@ -1308,7 +1351,7 @@ class WhatsAppSeleniumConnector:
             result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
             if f":{port}" in result.stdout:
                 self.logger.warning(f"⚠️ Puerto {port} ya está en uso, intentando liberar...")
-                time.sleep(2)
+                time.sleep(0.5)
             
             chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
             profile_path = self.user_data_dir  # PERFIL DEL BOT
@@ -1334,7 +1377,7 @@ class WhatsAppSeleniumConnector:
             
             # Esperar que Chrome se inicie y verificar debugging
             self.logger.info("⏳ Esperando que Chrome HABILITE remote debugging...")
-            max_wait = 15  # Reducido para ser más rápido
+            max_wait = 8  # Reducido para ser más rápido
             
             for i in range(max_wait):
                 try:
@@ -1373,8 +1416,8 @@ class WhatsAppSeleniumConnector:
                     pass
                 except Exception as e:
                     self.logger.warning(f"❌ Error verificando: {e}")
-                
-                time.sleep(1)
+
+                time.sleep(0.5)
             
             # Diagnóstico completo si falla
             self.logger.error(f"💥 Chrome debugging NO SE ACTIVÓ después de {max_wait} segundos")
@@ -1421,7 +1464,7 @@ class WhatsAppSeleniumConnector:
                 self.logger.info("ℹ️ No había instancias de Chrome corriendo")
             
             # Esperar que se cierren completamente
-            time.sleep(3)
+            time.sleep(1)
             
             # Limpiar locks del perfil
             self.logger.info("🧹 Limpiando locks del perfil...")
@@ -1451,10 +1494,10 @@ class WhatsAppSeleniumConnector:
             self.driver.execute_script("window.location.href = 'https://web.whatsapp.com';")
             
             # Esperar a que cargue completamente
-            wait = WebDriverWait(self.driver, 30)
+            wait = WebDriverWait(self.driver, 10)
             wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
-            
-            time.sleep(5)
+
+            time.sleep(1)
             
             return True
             
@@ -1468,7 +1511,7 @@ class WhatsAppSeleniumConnector:
             self.logger.info("Esperando login de usuario...")
             
             # Timeout más largo para login
-            wait = WebDriverWait(self.driver, 120)  # 2 minutos
+            wait = WebDriverWait(self.driver, 60)  # 1 minuto
             
             # Verificar si ya está logueado
             self.logger.info("🔍 Verificando estado actual de WhatsApp Web...")
@@ -1502,22 +1545,22 @@ class WhatsAppSeleniumConnector:
             ]
             
             self.logger.info(f"⏳ Esperando login (timeout: 120s)...")
-            
+
             for attempt in range(120):  # Verificar cada segundo
                 for selector in login_indicators:
                     try:
                         element = self.driver.find_element(By.CSS_SELECTOR, selector)
                         if element and element.is_displayed():
                             self.logger.info(f"✅ Login exitoso detectado con selector: {selector}")
-                            time.sleep(3)  # Dar tiempo extra para que cargue
+                            time.sleep(0.2)  # Dar tiempo extra para que cargue
                             return True
                     except NoSuchElementException:
                         continue
-                
+
                 # Log de progreso cada 10 segundos
                 if attempt % 10 == 0 and attempt > 0:
                     self.logger.info(f"⏳ Esperando login... ({attempt}/120 segundos)")
-                    
+
                     # Debug: mostrar elementos actuales
                     try:
                         page_source = self.driver.page_source
@@ -1527,8 +1570,8 @@ class WhatsAppSeleniumConnector:
                             self.logger.debug("🔍 Página cargando...")
                     except:
                         pass
-                        
-                time.sleep(1)
+
+                time.sleep(0.2)  # Verificación más rápida
             
             self.logger.error("❌ Timeout esperando login después de 120 segundos")
             return False
@@ -1556,7 +1599,7 @@ class WhatsAppSeleniumConnector:
                 
                 # Asegurar que el elemento está visible
                 self.driver.execute_script("arguments[0].scrollIntoView(true);", chat_element)
-                time.sleep(1)
+                time.sleep(0.3)
                 
                 # Intentar click normal primero
                 chat_element.click()
@@ -1569,7 +1612,7 @@ class WhatsAppSeleniumConnector:
             
             # Esperar más tiempo para que cargue el chat
             self.logger.info("⏳ Esperando que cargue el chat...")
-            time.sleep(5)  # Tiempo aumentado
+            time.sleep(1)  # Tiempo reducido
             
             # Verificar múltiples veces con pausa
             max_attempts = 3
@@ -1583,7 +1626,7 @@ class WhatsAppSeleniumConnector:
                 
                 if attempt < max_attempts - 1:  # No esperar en el último intento
                     self.logger.info("⏳ Esperando antes del siguiente intento...")
-                    time.sleep(3)
+                    time.sleep(1)
             
             self.logger.error("❌ No se pudo verificar la selección del chat después de múltiples intentos")
             return False
@@ -1612,7 +1655,7 @@ class WhatsAppSeleniumConnector:
             chat_list_found = False
             for selector in chat_list_selectors:
                 try:
-                    wait = WebDriverWait(self.driver, 5)  # Timeout corto por selector
+                    wait = WebDriverWait(self.driver, 2)  # Timeout corto por selector
                     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
                     self.logger.info(f"✅ Lista de chats encontrada con: {selector}")
                     chat_list_found = True
@@ -1620,13 +1663,13 @@ class WhatsAppSeleniumConnector:
                 except:
                     self.logger.debug(f"Selector {selector} no funcionó")
                     continue
-            
+
             if not chat_list_found:
                 self.logger.warning("⚠️ No se encontró lista de chats con selectores conocidos, continuando...")
-            
+
             # Dar tiempo para que carguen los chats
             self.logger.info("📋 Esperando que carguen los chats...")
-            time.sleep(3)
+            time.sleep(0.5)
             
             # Múltiples selectores para elementos de chat (ACTUALIZADOS 2025)
             chat_selectors = [

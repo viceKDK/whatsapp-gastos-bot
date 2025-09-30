@@ -45,8 +45,8 @@ class WhatsAppMessageSender:
         self.last_send_time = None
         
         # Configuraciones de envío
-        self.typing_delay = 0.1  # Delay entre caracteres para simular tipeo
-        self.send_delay = 2.0    # Delay después de enviar mensaje
+        self.typing_delay = 0.03  # Delay entre caracteres para simular tipeo
+        self.send_delay = 0.3    # Delay después de enviar mensaje
         
     @property
     def can_send_messages(self) -> bool:
@@ -430,7 +430,7 @@ class WhatsAppEnhancedConnector(WhatsAppSeleniumConnector):
         super().__init__(config)
         self.sender = None
         self.auto_responses_enabled = True
-        self.response_delay = 2.0  # Delay antes de responder automáticamente
+        self.response_delay = 0.3  # Delay antes de responder automáticamente
     
     def connect(self) -> bool:
         """
