@@ -17,6 +17,7 @@ export default function Settings() {
     autoBackup: initial.autoBackup ?? true,
     language: initial.language ?? 'es',
   })
+  const [fxMeta, setFxMeta] = useState({ provider: null, timestamp: null, cached: false })
 
   const handleSave = () => {
     const oldLang = initial.language
@@ -43,11 +44,26 @@ export default function Settings() {
         const rate = Number(fx?.rate)
         if (isFinite(rate) && rate > 0) {
           setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
+          setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached })
         }
       } catch (e) {
         // Silencio: mantenemos la tasa manual existente
         console.debug('No se pudo obtener tasa FX automática', e)
       }
+    }
+  }
+
+  const handleRefreshFx = async () => {
+    try {
+      const fx = await api.getFx({ base: 'USD', quote: 'UYU' })
+      const rate = Number(fx?.rate)
+      if (isFinite(rate) && rate > 0) {
+        setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
+        setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached })
+        notify({ type: 'success', title: t('settings.title'), message: t('settings.fxUpdated') })
+      }
+    } catch (e) {
+      notify({ type: 'error', title: t('settings.title'), message: t('settings.fxUpdateFailed') })
     }
   }
 
@@ -60,6 +76,7 @@ export default function Settings() {
           const rate = Number(fx?.rate)
           if (isFinite(rate) && rate > 0) {
             setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
+            setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached })
           }
         } catch {}
       }
@@ -112,9 +129,24 @@ export default function Settings() {
                   value={`1 USD = ${Number(settings.fxUYUperUSD).toFixed(4)} UYU`}
                   className="w-full px-4 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-700"
                 />
-                <span className="text-xs text-gray-500">Automática (API)</span>
+                <button type="button" onClick={handleRefreshFx} className="btn btn-outline whitespace-nowrap">
+                  {t('settings.fxRefresh')}
+                </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">{t('settings.fxRateDesc')}</p>
+              <div className="mt-1 text-xs text-gray-500">
+                <span>{t('settings.fxRateDesc')}</span>
+                {fxMeta.provider && (
+                  <>
+                    <span className="ml-2">• {t('settings.fxProvider')}: {fxMeta.provider}</span>
+                    {fxMeta.timestamp && (
+                      <span className="ml-2">• {t('settings.fxUpdatedAt')}: {new Date(fxMeta.timestamp).toLocaleString()}</span>
+                    )}
+                    {fxMeta.cached && (
+                      <span className="ml-2">• {t('settings.fxCached')}</span>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
 
