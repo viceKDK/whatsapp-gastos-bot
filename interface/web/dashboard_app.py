@@ -90,58 +90,103 @@ class DashboardDataProvider:
 
     # --- FX rate provider (with simple caching) ---
     def get_fx_rate(self, base: str = 'USD', quote: str = 'UYU', ttl_seconds: int = 6 * 60 * 60) -> Dict[str, Any]:
-        """Obtiene tasa de cambio usando exchangerate.host con caché."""
-        try:
-            base = (base or 'USD').upper()
-            quote = (quote or 'UYU').upper()
-            if base == quote:
-                return {
-                    'base': base,
-                    'quote': quote,
-                    'rate': 1.0,
-                    'provider': 'local',
-                    'timestamp': datetime.now().isoformat(),
-                    'cached': False,
-                }
+        """Obtiene tasa de cambio con caché y múltiples proveedores."""
+        base = (base or 'USD').upper()
+        quote = (quote or 'UYU').upper()
 
-            cache_key = f'fx:{base}->{quote}'
-            cached = self._cache_get(cache_key, ttl_seconds)
-            if cached is not None:
-                return { **cached, 'cached': True }
+        if base == quote:
+            return {
+                'base': base,
+                'quote': quote,
+                'rate': 1.0,
+                'provider': 'local',
+                'timestamp': datetime.now().isoformat(),
+                'cached': False,
+            }
 
-            import requests  # lazy import
+        cache_key = f'fx:{base}->{quote}'
+        cached = self._cache_get(cache_key, ttl_seconds)
+        if cached is not None:
+            return { **cached, 'cached': True }
+
+        def _try_exchangerate_host() -> Optional[Dict[str, Any]]:
+            import requests
             url = f'https://api.exchangerate.host/latest?base={base}&symbols={quote}'
-            resp = requests.get(url, timeout=5)
+            resp = requests.get(url, timeout=8)
             resp.raise_for_status()
             data = resp.json() or {}
-            rates = data.get('rates') or {}
-            rate = float(rates.get(quote)) if rates.get(quote) is not None else None
-            if not rate or rate <= 0:
-                raise ValueError('Invalid FX rate from provider')
-
-            payload = {
+            rate_val = (data.get('rates') or {}).get(quote)
+            if rate_val is None:
+                return None
+            rate = float(rate_val)
+            if rate <= 0:
+                return None
+            return {
                 'base': base,
                 'quote': quote,
                 'rate': rate,
                 'provider': 'exchangerate.host',
                 'timestamp': datetime.now().isoformat(),
             }
-            self._cache_set(cache_key, payload)
-            payload['cached'] = False
-            return payload
 
-        except Exception as e:
-            # Fallback a una tasa segura (p.ej. 40 UYU por 1 USD si base=USD,quote=UYU)
-            self.logger.warning(f"FX fallback ({base}->{quote}): {e}")
-            fallback = 40.0 if base == 'USD' and quote == 'UYU' else 1.0
+        def _try_er_api() -> Optional[Dict[str, Any]]:
+            import requests
+            url = f'https://open.er-api.com/v6/latest/{base}'
+            resp = requests.get(url, timeout=8)
+            resp.raise_for_status()
+            data = resp.json() or {}
+            if data.get('result') != 'success':
+                return None
+            rates = data.get('rates') or {}
+            rate_val = rates.get(quote)
+            if rate_val is None:
+                return None
+            rate = float(rate_val)
+            if rate <= 0:
+                return None
             return {
                 'base': base,
                 'quote': quote,
-                'rate': fallback,
-                'provider': 'fallback',
+                'rate': rate,
+                'provider': 'open.er-api.com',
                 'timestamp': datetime.now().isoformat(),
-                'cached': False,
             }
+
+        # Intento 1: exchangerate.host
+        try:
+            payload = _try_exchangerate_host()
+            if payload:
+                self._cache_set(cache_key, payload)
+                payload['cached'] = False
+                return payload
+        except Exception as e1:
+            self.logger.warning(f"FX primary provider failure (exchangerate.host): {e1}")
+
+        # Intento 2: open.er-api.com
+        try:
+            payload = _try_er_api()
+            if payload:
+                self._cache_set(cache_key, payload)
+                payload['cached'] = False
+                return payload
+        except Exception as e2:
+            self.logger.warning(f"FX secondary provider failure (open.er-api.com): {e2}")
+
+        # Si existe un valor viejo en cache_store (aunque esté vencido), úsalo marcado como stale
+        stale = self._cache_store.get(cache_key)
+        if stale:
+            return { **stale, 'cached': True, 'stale': True }
+
+        # Fallback fijo
+        fallback = 40.0 if base == 'USD' and quote == 'UYU' else 1.0
+        return {
+            'base': base,
+            'quote': quote,
+            'rate': fallback,
+            'provider': 'fallback',
+            'timestamp': datetime.now().isoformat(),
+            'cached': False,
+        }
     
     def get_summary_stats(self) -> Dict[str, Any]:
         """Obtiene estadísticas resumidas con comparaciones."""

@@ -17,7 +17,7 @@ export default function Settings() {
     autoBackup: initial.autoBackup ?? true,
     language: initial.language ?? 'es',
   })
-  const [fxMeta, setFxMeta] = useState({ provider: null, timestamp: null, cached: false })
+  const [fxMeta, setFxMeta] = useState({ provider: null, timestamp: null, cached: false, stale: false })
 
   const handleSave = () => {
     const oldLang = initial.language
@@ -44,7 +44,7 @@ export default function Settings() {
         const rate = Number(fx?.rate)
         if (isFinite(rate) && rate > 0) {
           setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
-          setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached })
+          setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached, stale: !!fx?.stale })
         }
       } catch (e) {
         // Silencio: mantenemos la tasa manual existente
@@ -59,7 +59,7 @@ export default function Settings() {
       const rate = Number(fx?.rate)
       if (isFinite(rate) && rate > 0) {
         setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
-        setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached })
+        setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached, stale: !!fx?.stale })
         notify({ type: 'success', title: t('settings.title'), message: t('settings.fxUpdated') })
       }
     } catch (e) {
@@ -76,7 +76,7 @@ export default function Settings() {
           const rate = Number(fx?.rate)
           if (isFinite(rate) && rate > 0) {
             setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
-            setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached })
+            setFxMeta({ provider: fx?.provider || null, timestamp: fx?.timestamp || null, cached: !!fx?.cached, stale: !!fx?.stale })
           }
         } catch {}
       }
@@ -143,6 +143,9 @@ export default function Settings() {
                     )}
                     {fxMeta.cached && (
                       <span className="ml-2">• {t('settings.fxCached')}</span>
+                    )}
+                    {fxMeta.stale && (
+                      <span className="ml-2">• {t('settings.fxStale')}</span>
                     )}
                   </>
                 )}
