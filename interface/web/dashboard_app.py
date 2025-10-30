@@ -718,12 +718,6 @@ class DashboardApp:
     def setup_routes(self):
         """Configura las rutas de la aplicación."""
         
-        @self.app.route('/')
-        def dashboard():
-            """Página principal del dashboard."""
-            return render_template('dashboard.html', 
-                                 title="Bot Gastos Dashboard",
-                                 version="1.0.0")
         
         @self.app.route('/api/summary')
         def api_summary():

@@ -8,8 +8,10 @@ import sys
 import argparse
 from pathlib import Path
 
-# Agregar el directorio raíz al path
-sys.path.append(str(Path(__file__).parent))
+# Agregar el directorio raíz del repo al PYTHONPATH
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from interface.web import run_dashboard
 from shared.logger import get_logger
