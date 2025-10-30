@@ -12,6 +12,7 @@ export default function Settings() {
     monthlyLimit: initial.monthlyLimit ?? LIMITE_GASTO_MENSUAL,
     notifications: initial.notifications ?? true,
     currency: initial.currency ?? 'UYU',
+    fxUYUperUSD: initial.fxUYUperUSD ?? 40,
     autoBackup: initial.autoBackup ?? true,
     language: initial.language ?? 'es',
   })
@@ -79,6 +80,28 @@ export default function Settings() {
               <option value="USD">USD - Dólar</option>
             </select>
           </div>
+
+          {settings.currency === 'USD' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('settings.fxRate')}
+              </label>
+              <div className="flex gap-3">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={settings.fxUYUperUSD}
+                  onChange={(e) => handleChange('fxUYUperUSD', Number(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <div className="flex items-center text-sm text-gray-600">
+                  UYU por 1 USD
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{t('settings.fxRateDesc')}</p>
+            </div>
+          )}
         </div>
       </div>
 

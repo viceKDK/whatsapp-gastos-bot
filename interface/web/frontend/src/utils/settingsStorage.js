@@ -26,8 +26,15 @@ export function getCurrency() {
   return s.currency || 'UYU'
 }
 
+// Devuelve la tasa manual UYU por 1 USD (por defecto 40)
+export function getFxUYUperUSD() {
+  const s = getSettings()
+  const raw = Number(s.fxUYUperUSD)
+  if (!isFinite(raw) || raw <= 0) return 40
+  return raw
+}
+
 export function isSafeMode() {
   const s = getSettings()
   return !!s.safeMode
 }
-

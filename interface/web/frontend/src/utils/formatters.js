@@ -1,6 +1,6 @@
 import { format, formatDistance, formatRelative } from 'date-fns'
 import { es, enUS } from 'date-fns/locale'
-import { getCurrency, getLanguage, isSafeMode } from './settingsStorage'
+import { getCurrency, getLanguage, isSafeMode, getFxUYUperUSD } from './settingsStorage'
 
 /**
  * Formatea un monto a formato de moneda
@@ -9,13 +9,22 @@ export const formatCurrency = (amount, currency) => {
   if (isSafeMode()) return '••••'
   const lang = getLanguage()
   const cur = currency || getCurrency()
+  let displayAmount = Number(amount) || 0
+
+  // Los montos base vienen en UYU. Si el usuario eligió USD, convertimos al vuelo.
+  if (cur === 'USD') {
+    const fx = getFxUYUperUSD() // UYU por 1 USD
+    if (isFinite(fx) && fx > 0) {
+      displayAmount = displayAmount / fx
+    }
+  }
   const locale = lang === 'en' ? 'en-US' : 'es-UY'
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: cur,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount)
+  }).format(displayAmount)
 }
 
 /**
