@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    
+    <!-- CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #64748b;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --dark-color: #1e293b;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .dashboard-container {
+            padding: 2rem 0;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+            border-left: 5px solid var(--primary-color);
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .stat-label {
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            padding: 1rem;
+        }
+        
+        .loading-spinner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        
+        .status-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-healthy {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .status-warning {
+            background-color: var(--warning-color);
+            color: white;
+        }
+        
+        .status-critical {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .recent-item {
+            border-left: 4px solid var(--primary-color);
+            margin-bottom: 0.5rem;
+            padding: 0.75rem;
+            background-color: #f8fafc;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .navbar-custom {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .refresh-btn {
+            animation: none;
+        }
+        
+        .refresh-btn.spinning {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .metric-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="fas fa-chart-line me-2"></i>
+                Bot Gastos Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <button class="btn btn-outline-primary btn-sm refresh-btn" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i>
+                    Actualizar
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container dashboard-container">
+        <!-- Header Stats -->
+        <div class="row mb-4">
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card stat-card h-100">
+                    <div class="card-body text-center">
+                        <div class="stat-value" id="total-gastos">-</div>
+                        <div class="stat-label">Total Gastos</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card stat-card h-100">
+                    <div class="card-body text-center">
+                        <div class="stat-value" id="monto-total">$-</div>
+                        <div class="stat-label">Monto Total</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card stat-card h-100">
+                    <div class="card-body text-center">
+                        <div class="stat-value" id="gastos-mes">-</div>
+                        <div class="stat-label">Este Mes</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-3">
+                <div class="card stat-card h-100">
+                    <div class="card-body text-center">
+                        <div class="stat-value" id="promedio-diario">$-</div>
+                        <div class="stat-label">Promedio Diario</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row mb-4">
+            <div class="col-lg-8 mb-3">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-line me-2"></i>
+                            Gastos en el Tiempo
+                        </h5>
+                        <select class="form-select form-select-sm" style="width: auto;" onchange="updateTimeline(this.value)">
+                            <option value="7">Última semana</option>
+                            <option value="30" selected>Último mes</option>
+                            <option value="90">Últimos 3 meses</option>
+                        </select>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="timelineChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-pie me-2"></i>
+                            Gastos por Categoría
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row -->
+        <div class="row">
+            <div class="col-lg-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-history me-2"></i>
+                            Gastos Recientes
+                        </h5>
+                    </div>
+                    <div class="card-body" id="recent-gastos">
+                        <div class="loading-spinner">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-heartbeat me-2"></i>
+                            Estado del Sistema
+                        </h5>
+                    </div>
+                    <div class="card-body" id="system-metrics">
+                        <div class="loading-spinner">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+
+    <script>
+        // Global variables
+        let timelineChart = null;
+        let categoryChart = null;
+        
+        // Utility functions
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('es-UY', {
+                style: 'currency',
+                currency: 'UYU',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(amount);
+        }
+        
+        function formatNumber(num) {
+            return new Intl.NumberFormat('es-UY').format(num);
+        }
+        
+        function showError(message) {
+            console.error(message);
+            // You could add a toast notification here
+        }
+        
+        // API calls
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`/api/${endpoint}`);
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error || 'Error desconocido');
+                }
+                
+                return data.data;
+            } catch (error) {
+                showError(`Error fetching ${endpoint}: ${error.message}`);
+                return null;
+            }
+        }
+        
+        // Load summary statistics
+        async function loadSummary() {
+            const data = await fetchData('summary');
+            if (!data) return;
+            
+            document.getElementById('total-gastos').textContent = formatNumber(data.total_gastos);
+            document.getElementById('monto-total').textContent = formatCurrency(data.total_monto);
+            document.getElementById('gastos-mes').textContent = formatNumber(data.gastos_este_mes);
+            document.getElementById('promedio-diario').textContent = formatCurrency(data.promedio_diario);
+        }
+        
+        // Load and create timeline chart
+        async function loadTimeline(days = 30) {
+            const data = await fetchData(`timeline?days=${days}`);
+            if (!data) return;
+            
+            const ctx = document.getElementById('timelineChart').getContext('2d');
+            
+            if (timelineChart) {
+                timelineChart.destroy();
+            }
+            
+            timelineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.dates,
+                    datasets: [{
+                        label: 'Gastos Diarios',
+                        data: data.amounts,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#2563eb',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Gastos: ${formatCurrency(context.raw)}`;
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        point: {
+                            hoverBackgroundColor: '#1d4ed8'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Load and create category chart
+        async function loadCategories(days = 30) {
+            const data = await fetchData(`categories?days=${days}`);
+            if (!data) return;
+            
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            
+            if (categoryChart) {
+                categoryChart.destroy();
+            }
+            
+            // Color palette
+            const colors = [
+                '#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea',
+                '#c2410c', '#0891b2', '#be123c', '#4338ca', '#059669'
+            ];
+            
+            categoryChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: data.categories,
+                    datasets: [{
+                        data: data.amounts,
+                        backgroundColor: colors.slice(0, data.categories.length),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = formatCurrency(context.raw);
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((context.raw / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Load recent expenses
+        async function loadRecent() {
+            const data = await fetchData('recent?limit=10');
+            if (!data) return;
+            
+            const container = document.getElementById('recent-gastos');
+            
+            if (data.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No hay gastos recientes</p>';
+                return;
+            }
+            
+            let html = '';
+            data.forEach(gasto => {
+                html += `
+                    <div class="recent-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>${formatCurrency(gasto.monto)}</strong>
+                                <span class="badge bg-primary ms-2">${gasto.categoria}</span>
+                                <div class="small text-muted mt-1">${gasto.descripcion || 'Sin descripción'}</div>
+                            </div>
+                            <small class="text-muted">${gasto.fecha}</small>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        // Load system metrics
+        async function loadMetrics() {
+            const data = await fetchData('metrics');
+            if (!data) return;
+            
+            const container = document.getElementById('system-metrics');
+            const health = data.health;
+            
+            let statusClass = 'status-critical';
+            let statusIcon = 'fa-exclamation-triangle';
+            
+            switch(health.status) {
+                case 'healthy':
+                    statusClass = 'status-healthy';
+                    statusIcon = 'fa-check-circle';
+                    break;
+                case 'warning':
+                    statusClass = 'status-warning';
+                    statusIcon = 'fa-exclamation-circle';
+                    break;
+            }
+            
+            let html = `
+                <div class="metric-item">
+                    <span><i class="fas ${statusIcon} me-2"></i>Estado General</span>
+                    <span class="status-badge ${statusClass}">
+                        ${health.status || 'Unknown'}
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span>Memoria</span>
+                    <span>${(health.current_memory_mb || 0).toFixed(1)} MB</span>
+                </div>
+                <div class="metric-item">
+                    <span>CPU</span>
+                    <span>${(health.current_cpu_percent || 0).toFixed(1)}%</span>
+                </div>
+                <div class="metric-item">
+                    <span>Operaciones</span>
+                    <span>${formatNumber(health.total_operations || 0)}</span>
+                </div>
+                <div class="metric-item">
+                    <span>Errores</span>
+                    <span class="${health.total_errors > 0 ? 'text-danger' : 'text-success'}">
+                        ${formatNumber(health.total_errors || 0)}
+                    </span>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+        }
+        
+        // Update timeline chart with new period
+        function updateTimeline(days) {
+            loadTimeline(parseInt(days));
+            loadCategories(parseInt(days));
+        }
+        
+        // Refresh all data
+        async function refreshData() {
+            const refreshBtn = document.querySelector('.refresh-btn');
+            refreshBtn.classList.add('spinning');
+            
+            try {
+                await Promise.all([
+                    loadSummary(),
+                    loadTimeline(),
+                    loadCategories(),
+                    loadRecent(),
+                    loadMetrics()
+                ]);
+            } finally {
+                refreshBtn.classList.remove('spinning');
+            }
+        }
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshData();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(refreshData, 30000);
+        });
+    </script>
+</body>
+</html>

@@ -39,13 +39,13 @@ def main():
                       "Asegúrate de que sea seguro en tu red.")
     
     # Mostrar información de inicio
-    print("🚀 Iniciando Dashboard Web Bot Gastos")
+    print("[*] Iniciando Dashboard Web Bot Gastos")
     print("=" * 40)
-    print(f"🌐 URL: http://{host}:{args.port}")
-    print(f"🔧 Debug: {'Habilitado' if args.debug else 'Deshabilitado'}")
-    print(f"🔒 Acceso: {'Público' if args.public else 'Solo local'}")
+    print(f"[WEB] URL: http://{host}:{args.port}")
+    print(f"[DEBUG] Debug: {'Habilitado' if args.debug else 'Deshabilitado'}")
+    print(f"[ACCESS] Acceso: {'Publico' if args.public else 'Solo local'}")
     print("=" * 40)
-    print("💡 Presiona Ctrl+C para detener el servidor")
+    print("[INFO] Presiona Ctrl+C para detener el servidor")
     print()
     
     try:
@@ -54,8 +54,8 @@ def main():
             import flask
             import flask_cors
         except ImportError as e:
-            print(f"❌ Error: Dependencia faltante: {e}")
-            print("📦 Instala las dependencias con:")
+            print(f"[ERROR] Error: Dependencia faltante: {e}")
+            print("[INFO] Instala las dependencias con:")
             print("   pip install flask flask-cors")
             return 1
         
@@ -63,11 +63,11 @@ def main():
         run_dashboard(host=host, port=args.port, debug=args.debug)
         
     except KeyboardInterrupt:
-        print("\n👋 Dashboard detenido por el usuario")
+        print("\n[BYE] Dashboard detenido por el usuario")
         return 0
     except Exception as e:
         logger.error(f"Error ejecutando dashboard: {e}")
-        print(f"❌ Error: {e}")
+        print(f"[ERROR] Error: {e}")
         return 1
 
 
