@@ -200,6 +200,11 @@ El script `examples/test_whatsapp_integration.py` ofrece:
 
 ---
 
+## OCR y PDFs
+Para detalles de extraccion de facturas, recibos y deteccion de PDFs de transferencias desde WhatsApp, ver `docs/WHATSAPP_OCR_Y_FACTURAS.md`.
+
+---
+
 ## 📊 Estado Final
 
 | Componente | Estado | Completado |

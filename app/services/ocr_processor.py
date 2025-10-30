@@ -20,6 +20,13 @@ try:
 except ImportError:
     HAS_OCR = False
 
+# EasyOCR fallback (no external binary required)
+try:
+    import easyocr  # type: ignore
+    HAS_EASYOCR = True
+except Exception:
+    HAS_EASYOCR = False
+
 from config.config_manager import get_config
 from shared.logger import get_logger
 from shared.validators import validate_gasto, ValidationLevel
@@ -161,6 +168,8 @@ class TextExtractor:
         # Configurar Tesseract si está disponible
         if HAS_OCR:
             self._configure_tesseract()
+        # EasyOCR: inicializacion diferida (para evitar problemas de consola en Windows)
+        self._easyocr_reader = None
     
     def _configure_tesseract(self):
         """Configura parámetros de Tesseract."""
@@ -182,28 +191,69 @@ class TextExtractor:
         Returns:
             Tupla (texto_extraído, confianza)
         """
-        if not HAS_OCR:
-            raise RuntimeError("pytesseract no está instalado")
-        
         try:
-            # Configurar parámetros de OCR
-            ocr_config = self._get_ocr_config()
-            
-            # Extraer texto
-            text = pytesseract.image_to_string(image, config=ocr_config)
-            
-            # Obtener datos detallados incluyendo confianza
-            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, config=ocr_config)
-            
-            # Calcular confianza promedio
-            confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
-            avg_confidence = sum(confidences) / len(confidences) if confidences else 0
-            
-            return text.strip(), avg_confidence / 100.0  # Normalizar a 0-1
-            
+            # Intento 1: Tesseract (lazy import)
+            try:
+                import pytesseract as _pyt
+                # asegurar config
+                try:
+                    tesseract_path = getattr(self.config.ocr, 'tesseract_path', None)
+                    if tesseract_path and Path(tesseract_path).exists():
+                        _pyt.pytesseract.tesseract_cmd = tesseract_path
+                except Exception:
+                    pass
+                ocr_config = self._get_ocr_config()
+                text = _pyt.image_to_string(image, config=ocr_config)
+                data = _pyt.image_to_data(image, output_type=_pyt.Output.DICT, config=ocr_config)
+                confidences = [int(conf) for conf in data.get('conf', []) if str(conf).isdigit() and int(conf) > 0]
+                avg_confidence = (sum(confidences) / len(confidences)) if confidences else 0
+                return text.strip(), avg_confidence / 100.0
+            except Exception as e_tess:
+                self.logger.warning(f"Fallo Tesseract, intentando EasyOCR: {e_tess}")
+                # Intento 2: EasyOCR
+                self._ensure_easyocr()
+                if self._easyocr_reader is None:
+                    raise RuntimeError("EasyOCR no disponible")
+                if len(image.shape) == 2:
+                    rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+                else:
+                    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                results = self._easyocr_reader.readtext(rgb, detail=1)
+                texts = []
+                confs = []
+                for r in results:
+                    try:
+                        _, txt, conf = r
+                        if txt and isinstance(conf, (float, int)):
+                            texts.append(str(txt))
+                            confs.append(float(conf))
+                    except Exception:
+                        continue
+                text_joined = "\n".join(texts).strip()
+                avg_conf = (sum(confs) / len(confs)) if confs else 0.0
+                return text_joined, avg_conf
         except Exception as e:
             self.logger.error(f"Error extrayendo texto: {e}")
             return "", 0.0
+
+    def _ensure_easyocr(self):
+        """Inicializa EasyOCR de forma segura y silenciosa en Windows."""
+        if self._easyocr_reader is not None or not HAS_EASYOCR:
+            return
+        try:
+            import os, sys
+            # Forzar stdout a utf-8 para evitar errores de encoding en barras de progreso
+            try:
+                if hasattr(sys.stdout, 'reconfigure'):
+                    sys.stdout.reconfigure(encoding='utf-8')
+            except Exception:
+                pass
+            os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+            # Inicializar lector (descarga modelos la primera vez)
+            self._easyocr_reader = easyocr.Reader(['es', 'en'], gpu=False)
+            self.logger.info("EasyOCR inicializado (fallback)")
+        except Exception as e:
+            self.logger.warning(f"No se pudo inicializar EasyOCR: {e}")
     
     def _get_ocr_config(self) -> str:
         """Obtiene configuración de OCR."""
@@ -268,7 +318,8 @@ class ReceiptAnalyzer:
                 'dates': self._extract_dates(text),
                 'categories': self._detect_categories(text),
                 'merchant': self._extract_merchant(text),
-                'items': self._extract_items(text)
+                'items': self._extract_items(text),
+                'total_amount': self._extract_total_amount(text)
             }
             
             return result
@@ -294,6 +345,53 @@ class ReceiptAnalyzer:
         
         # Eliminar duplicados y ordenar
         return sorted(list(set(amounts)), reverse=True)
+
+    def _extract_total_amount(self, text: str) -> Optional[float]:
+        """Intenta extraer el monto asociado a 'TOTAL' o frases similares."""
+        try:
+            lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
+            # Patrones de total
+            total_tokens = [
+                r'\btotal\b', r'\bttoal\b', r'\bimporte\s*total\b', r'\bmonto\s*total\b',
+                r'\btotal\s*a\s*pagar\b', r'\btotal\s*final\b'
+            ]
+            money_pat = re.compile(r'(?:\$\s*)?(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})|\d+[\.,]\d{2})')
+            def norm_amount(s: str) -> Optional[float]:
+                if s.count(',')>0 and s.count('.')>0:
+                    if s.rfind(',')>s.rfind('.'):  # 1.234,56
+                        s = s.replace('.', '').replace(',', '.')
+                    else:
+                        s = s.replace(',', '')
+                elif s.count(',')>0 and s.count('.')==0:
+                    s = s.replace(',', '.')
+                else:
+                    s = s.replace(',', '')
+                try:
+                    v = float(s)
+                    if 0.01 <= v <= 10000000:
+                        return v
+                except Exception:
+                    return None
+                return None
+            # Buscar en la misma linea
+            for i, ln in enumerate(lines):
+                low = ln.lower()
+                if any(re.search(tok, low) for tok in total_tokens):
+                    m = money_pat.search(ln)
+                    if m:
+                        v = norm_amount(m.group(1))
+                        if v is not None:
+                            return v
+                    # Buscar en la siguiente linea si no esta en la misma
+                    if i+1 < len(lines):
+                        m2 = money_pat.search(lines[i+1])
+                        if m2:
+                            v2 = norm_amount(m2.group(1))
+                            if v2 is not None:
+                                return v2
+            return None
+        except Exception:
+            return None
     
     def _extract_dates(self, text: str) -> List[datetime]:
         """Extrae fechas del texto."""
@@ -384,13 +482,15 @@ class OCRProcessor:
         self.text_extractor = TextExtractor()
         self.analyzer = ReceiptAnalyzer()
         
-        # Verificar si OCR está habilitado
-        self.ocr_enabled = getattr(self.config.ocr, 'enabled', True) and HAS_OCR
+        # Verificar si OCR está habilitado (Tesseract o EasyOCR)
+        self.ocr_enabled = getattr(self.config.ocr, 'enabled', True) and (HAS_OCR or HAS_EASYOCR)
         
-        if not self.ocr_enabled and HAS_OCR is False:
-            self.logger.warning("OCR deshabilitado: pytesseract no está instalado")
+        if not HAS_OCR and HAS_EASYOCR:
+            self.logger.info("Usando EasyOCR como fallback de OCR")
+        elif not self.ocr_enabled:
+            self.logger.warning("OCR deshabilitado: no hay motor disponible")
     
-    def process_receipt_image(self, image_path: str) -> OCRResult:
+    def process_receipt_image(self, image_path: str, mode: str = 'auto', escalate: bool = True) -> OCRResult:
         """
         Procesa imagen de recibo completo.
         
@@ -405,7 +505,7 @@ class OCRProcessor:
         if not self.ocr_enabled:
             return OCRResult(
                 success=False,
-                error_message="OCR no está habilitado o pytesseract no está instalado"
+                error_message="OCR no está habilitado"
             )
         
         try:
@@ -433,7 +533,7 @@ class OCRProcessor:
                 # Cargar imagen sin preprocesamiento
                 processed_image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2GRAY)
             
-            # Extraer texto
+            # Extraer texto (primer intento)
             self.logger.debug("Extrayendo texto con OCR")
             text, confidence = self.text_extractor.extract_text(processed_image)
             
@@ -444,17 +544,19 @@ class OCRProcessor:
                     confidence=confidence
                 )
             
-            # Verificar confianza mínima
+            # Verificar confianza/sugerencia, y si es baja intentar variantes de preprocesado/rotacion
             min_confidence = getattr(self.config.ocr, 'confidence_threshold', 0.6)
-            if confidence < min_confidence:
-                self.logger.warning(f"Confianza OCR baja: {confidence:.2f} < {min_confidence}")
-            
-            # Analizar texto extraído
-            self.logger.debug("Analizando texto extraído")
             analysis = self.analyzer.analyze_receipt(text)
-            
-            # Crear sugerencia de gasto
             suggested_gasto = self._create_suggested_gasto(analysis, text)
+            # Escalada al modo pesado solo si corresponde
+            use_heavy = (mode == 'heavy') or (mode != 'fast' and escalate and (confidence < min_confidence or not suggested_gasto))
+            if use_heavy:
+                self.logger.debug("Intentando variantes de OCR (rotaciones/umbrales)")
+                text2, conf2 = self._extract_best_text_variants(processed_image)
+                if text2 and conf2 > confidence:
+                    text, confidence = text2, conf2
+                    analysis = self.analyzer.analyze_receipt(text)
+                    suggested_gasto = self._create_suggested_gasto(analysis, text)
             
             processing_time = (datetime.now() - start_time).total_seconds()
             
@@ -490,8 +592,11 @@ class OCRProcessor:
             if not amounts:
                 return None
             
-            # Usar el monto más probable (usualmente el más grande)
-            suggested_amount = amounts[0]
+            # Usar 'total_amount' si se detecta; si no, el mayor monto
+            total_amount = analysis.get('total_amount')
+            suggested_amount = total_amount if total_amount else (amounts[0] if amounts else None)
+            if suggested_amount is None:
+                return None
             
             # Usar la primera categoría detectada o 'otros'
             suggested_category = categories[0] if categories else 'otros'
@@ -529,6 +634,50 @@ class OCRProcessor:
         except Exception as e:
             self.logger.error(f"Error creando sugerencia de gasto: {e}")
             return None
+
+    def _extract_best_text_variants(self, base_image) -> Tuple[str, float]:
+        """Prueba variantes de preprocesado/rotacion y retorna el mejor texto/confianza."""
+        candidates: List[Tuple[str, float]] = []
+        try:
+            images = []
+            img = base_image
+            images.append(img)
+            # Rotaciones
+            try:
+                images.append(cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE))
+                images.append(cv2.rotate(img, cv2.ROTATE_180))
+                images.append(cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE))
+            except Exception:
+                pass
+            # Umbrales alternativos
+            try:
+                gray = img if len(img.shape) == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                images.append(otsu)
+                thr = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, 5)
+                images.append(thr)
+            except Exception:
+                pass
+            # Escalado
+            try:
+                h, w = img.shape[:2]
+                scale = 1.5 if max(h, w) < 1200 else 1.0
+                if scale != 1.0:
+                    images.append(cv2.resize(img, (int(w*scale), int(h*scale)), interpolation=cv2.INTER_CUBIC))
+            except Exception:
+                pass
+
+            best_text, best_conf = "", 0.0
+            for im in images:
+                try:
+                    t, c = self.text_extractor.extract_text(im)
+                    if t and c > best_conf:
+                        best_text, best_conf = t, c
+                except Exception:
+                    continue
+            return best_text, best_conf
+        except Exception:
+            return "", 0.0
     
     def process_multiple_images(self, image_paths: List[str]) -> List[OCRResult]:
         """
@@ -604,7 +753,7 @@ def get_ocr_processor() -> OCRProcessor:
     return _ocr_processor
 
 
-def process_receipt_image(image_path: str) -> OCRResult:
+def process_receipt_image(image_path: str, mode: str = 'auto', escalate: bool = True) -> OCRResult:
     """
     Función de conveniencia para procesar imagen de recibo.
     
@@ -615,4 +764,4 @@ def process_receipt_image(image_path: str) -> OCRResult:
         Resultado del procesamiento OCR
     """
     processor = get_ocr_processor()
-    return processor.process_receipt_image(image_path)
+    return processor.process_receipt_image(image_path, mode=mode, escalate=escalate)

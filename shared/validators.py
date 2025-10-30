@@ -6,7 +6,7 @@ Validadores centralizados para entrada de datos y integridad del sistema.
 
 import re
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Union, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -252,7 +252,7 @@ class FechaValidator:
             # Validar rango razonable
             now = datetime.now()
             min_date = datetime(1900, 1, 1)
-            max_date = now + datetime.timedelta(days=1)  # Permitir hasta mañana
+            max_date = now + timedelta(days=1)  # Permitir hasta mañana
             
             if sanitized < min_date:
                 result.add_error(f"Fecha muy antigua: {sanitized}")

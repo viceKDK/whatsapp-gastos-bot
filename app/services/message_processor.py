@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 from datetime import datetime
 from dataclasses import dataclass
+from decimal import Decimal
 
 from app.services.interpretar_mensaje import InterpretarMensajeService
 from app.services.ocr_processor import get_ocr_processor, OCRResult
@@ -18,6 +19,7 @@ from domain.models.gasto import Gasto
 from shared.logger import get_logger
 from shared.metrics import performance_monitor, record_metric
 from shared.validators import validate_gasto, ValidationLevel
+from shared.fx import get_fx_rate
 
 
 logger = get_logger(__name__)
@@ -394,7 +396,7 @@ class AdvancedMessageProcessor:
             
             try:
                 gasto = Gasto(
-                    monto=best_suggestion['monto'],
+                    monto=Decimal(str(best_suggestion['monto'])),
                     categoria=best_suggestion['categoria'],
                     fecha=best_suggestion.get('fecha', datetime.now()),
                     descripcion=best_suggestion.get('descripcion')
@@ -409,6 +411,19 @@ class AdvancedMessageProcessor:
                 
                 if pdf_result.confidence < 0.7:
                     warnings.append(f"Confianza PDF baja: {pdf_result.confidence:.1%}")
+                
+                # Conversion USD->UYU si el texto menciona USD
+                if self._text_mentions_usd(pdf_result.extracted_text or ""):
+                    try:
+                        fx = get_fx_rate('USD', 'UYU')
+                        rate = fx.get('rate', 1.0)
+                        gasto.monto = (gasto.monto * Decimal(str(rate))).quantize(Decimal('0.01'))
+                        if gasto.descripcion:
+                            gasto.descripcion = f"{gasto.descripcion} (USD->UYU @ {rate:.4f})"
+                        else:
+                            gasto.descripcion = f"USD->UYU @ {rate:.4f}"
+                    except Exception:
+                        warnings.append("No se pudo convertir USD a UYU, se registro en USD")
                 
                 # Crear sugerencias alternativas
                 alternative_suggestions = []
@@ -474,7 +489,7 @@ class AdvancedMessageProcessor:
             # Crear Gasto desde sugerencia
             try:
                 gasto = Gasto(
-                    monto=ocr_result.suggested_gasto['monto'],
+                    monto=Decimal(str(ocr_result.suggested_gasto['monto'])),
                     categoria=ocr_result.suggested_gasto['categoria'],
                     fecha=ocr_result.suggested_gasto.get('fecha', datetime.now()),
                     descripcion=ocr_result.suggested_gasto.get('descripcion')
@@ -489,6 +504,19 @@ class AdvancedMessageProcessor:
                 
                 if ocr_result.confidence < 0.7:
                     warnings.append(f"Confianza OCR baja: {ocr_result.confidence:.1%}")
+                
+                # Conversion USD->UYU si el texto menciona USD
+                if self._text_mentions_usd(ocr_result.extracted_text or ""):
+                    try:
+                        fx = get_fx_rate('USD', 'UYU')
+                        rate = fx.get('rate', 1.0)
+                        gasto.monto = (gasto.monto * Decimal(str(rate))).quantize(Decimal('0.01'))
+                        if gasto.descripcion:
+                            gasto.descripcion = f"{gasto.descripcion} (USD->UYU @ {rate:.4f})"
+                        else:
+                            gasto.descripcion = f"USD->UYU @ {rate:.4f}"
+                    except Exception:
+                        warnings.append("No se pudo convertir USD a UYU, se registro en USD")
                 
                 return ProcessingResult(
                     success=True,
@@ -576,6 +604,16 @@ class AdvancedMessageProcessor:
             suggestions.append(suggestion)
         
         return suggestions
+
+    def _text_mentions_usd(self, text: str) -> bool:
+        """Detecta USD de forma estricta: solo si aparece USD o U$S/US$.
+        No convierte si solo hay simbolo $ o palabras 'dolar(es)'.
+        """
+        try:
+            t = (text or '').lower()
+            return ('usd' in t) or ('u$s' in t) or ('us$' in t)
+        except Exception:
+            return False
     
     def _combine_results(self, results: List[Tuple[str, ProcessingResult]], 
                         start_time: datetime) -> ProcessingResult:

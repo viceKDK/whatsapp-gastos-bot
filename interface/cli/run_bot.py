@@ -8,6 +8,7 @@ import time
 import threading
 import hashlib
 from datetime import datetime, timedelta
+import re
 from typing import Optional
 
 from config.settings import Settings, StorageMode
@@ -58,6 +59,10 @@ class BotRunner:
             'ciclos_saltados_sin_cambios': 0,  # Nueva estadística
             'total_ciclos': 0  # Nueva estadística
         }
+
+        # Estado de gasto pendiente (requiere descripcion/categoria antes de guardar)
+        self.pending_gasto = None
+        self.pending_expires_at: Optional[datetime] = None
     
     def run(self) -> bool:
         """
@@ -482,6 +487,11 @@ class BotRunner:
                 self.stats['mensajes_procesados'] += 1
                 self.stats['ultima_actividad'] = datetime.now()
                 
+                # Intentar completar gasto pendiente con este mensaje
+                if self._try_complete_pending_gasto(mensaje_texto, fecha_mensaje):
+                    self.logger.info("Gasto pendiente completado y guardado")
+                    continue
+
                 # Procesar con procesador avanzado
                 self.logger.debug(f"🧠 ENVIANDO A PROCESADOR AVANZADO...")
                 content = MessageContent(
@@ -509,28 +519,37 @@ class BotRunner:
                     )
                 
                 if processing_result.success and processing_result.gasto:
-                    # Registrar en storage
-                    self.logger.debug(f"💾 GUARDANDO GASTO EN STORAGE...")
-                    try:
-                        storage_result = self.storage_repository.guardar_gasto(processing_result.gasto)
-                        self.logger.debug(f"💾 RESULTADO DEL GUARDADO: {storage_result}")
-                        
-                        if storage_result:
-                            self.stats['gastos_registrados'] += 1
-                            self.logger.info(f"✅ GASTO REGISTRADO EXITOSAMENTE!")
-                            self.logger.info(f"💰 ${processing_result.gasto.monto} - {processing_result.gasto.categoria}")
-                            
-                            # Mostrar en consola si no es modo headless
-                            if not self.settings.whatsapp.chrome_headless:
-                                print(f"💰 {datetime.now().strftime('%H:%M:%S')} - "
-                                      f"${processing_result.gasto.monto} en {processing_result.gasto.categoria}")
-                        else:
-                            self.logger.warning(f"🚫 GASTO RECHAZADO: Posible duplicado detectado")
-                        
-                    except Exception as e:
-                        self.logger.error(f"❌ EXCEPCIÓN guardando gasto: {e}")
-                        processing_result.success = False
-                        processing_result.errors.append(f"Error guardando: {str(e)}")
+                    gasto = processing_result.gasto
+                    needs_cat = not (gasto.categoria and gasto.categoria.strip() and gasto.categoria.lower() != 'otros')
+
+                    if needs_cat:
+                        # Guardar como pendiente y solicitar categoria (descripcion opcional)
+                        self.pending_gasto = gasto
+                        self.pending_expires_at = datetime.now() + timedelta(minutes=5)
+                        prompt = "Falta categoria para el gasto. Responde: cat: <categoria> | desc: <texto> (opcional)"
+                        try:
+                            if hasattr(self.whatsapp_connector, 'send_message'):
+                                self.whatsapp_connector.send_message(prompt)
+                        except Exception as e:
+                            self.logger.debug(f"No se pudo enviar prompt de categoria: {e}")
+                    else:
+                        # Registrar directamente en storage
+                        self.logger.debug(f"💾 GUARDANDO GASTO EN STORAGE...")
+                        try:
+                            storage_result = self.storage_repository.guardar_gasto(gasto)
+                            self.logger.debug(f"💾 RESULTADO DEL GUARDADO: {storage_result}")
+                            if storage_result:
+                                self.stats['gastos_registrados'] += 1
+                                self.logger.info(f"✅ GASTO REGISTRADO EXITOSAMENTE!")
+                                self.logger.info(f"💰 ${gasto.monto} - {gasto.categoria}")
+                                if not self.settings.whatsapp.chrome_headless:
+                                    print(f"💰 {datetime.now().strftime('%H:%M:%S')} - ${gasto.monto} en {gasto.categoria}")
+                            else:
+                                self.logger.warning(f"🚫 GASTO RECHAZADO: Posible duplicado detectado")
+                        except Exception as e:
+                            self.logger.error(f"❌ EXCEPCIÓN guardando gasto: {e}")
+                            processing_result.success = False
+                            processing_result.errors.append(f"Error guardando: {str(e)}")
                 
                 # Enviar respuesta automática si está habilitada Y no es mensaje del bot
                 try:
@@ -565,6 +584,57 @@ class BotRunner:
         except Exception as e:
             self.stats['errores'] += 1
             self.logger.error(f"Error procesando mensajes: {e}")
+
+    def _try_complete_pending_gasto(self, mensaje_texto: str, fecha_mensaje: datetime) -> bool:
+        """Intenta completar un gasto pendiente con la respuesta del usuario."""
+        try:
+            if not self.pending_gasto:
+                return False
+            if self.pending_expires_at and datetime.now() > self.pending_expires_at:
+                self.pending_gasto = None
+                self.pending_expires_at = None
+                return False
+
+            text = (mensaje_texto or '').strip()
+            if not text:
+                return False
+
+            # Categoria obligatoria, descripcion opcional
+            cat = None
+            desc = None
+            m_cat = re.search(r"cat\s*:\s*([a-zA-Záéíóúñ]+)", text, flags=re.IGNORECASE)
+            m_desc = re.search(r"desc\s*:\s*(.+)", text, flags=re.IGNORECASE)
+            if m_cat:
+                cat = m_cat.group(1).strip().lower()
+            else:
+                # Si no usa token, tomar la primera palabra como categoria
+                cat = text.split('|')[0].strip().split()[0].lower()
+            if m_desc:
+                desc = m_desc.group(1).split('|')[0].strip()
+
+            self.pending_gasto.categoria = cat
+            if desc:
+                self.pending_gasto.descripcion = desc
+            if not getattr(self.pending_gasto, 'fecha', None):
+                self.pending_gasto.fecha = fecha_mensaje or datetime.now()
+
+            saved = self.storage_repository.guardar_gasto(self.pending_gasto)
+            if saved:
+                try:
+                    if hasattr(self.whatsapp_connector, 'sender') and self.whatsapp_connector.sender:
+                        self.whatsapp_connector.sender.send_gasto_confirmation(self.pending_gasto)
+                except Exception:
+                    pass
+                self.stats['gastos_registrados'] += 1
+            else:
+                self.logger.warning("Gasto pendiente no se pudo guardar (posible duplicado)")
+
+            self.pending_gasto = None
+            self.pending_expires_at = None
+            return True
+        except Exception as e:
+            self.logger.debug(f"No se pudo completar gasto pendiente: {e}")
+            return False
     
     def _reconnect_whatsapp(self) -> bool:
         """
