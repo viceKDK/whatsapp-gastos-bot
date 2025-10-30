@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Save, Bell, Shield, Database, Palette, DollarSign } from 'lucide-react'
 import { LIMITE_GASTO_MENSUAL } from '../utils/constants'
 import { saveSettings, getSettings } from '../utils/settingsStorage'
@@ -51,6 +51,22 @@ export default function Settings() {
     }
   }
 
+  // Al montar, si está en USD, intenta obtener la tasa automática
+  useEffect(() => {
+    (async () => {
+      if (settings.currency === 'USD') {
+        try {
+          const fx = await api.getFx({ base: 'USD', quote: 'UYU' })
+          const rate = Number(fx?.rate)
+          if (isFinite(rate) && rate > 0) {
+            setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
+          }
+        } catch {}
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Sin modo oscuro: no aplicamos clases globales
 
   return (
@@ -83,6 +99,24 @@ export default function Settings() {
               {t('settings.monthlyLimitDesc')}
             </p>
           </div>
+
+          {settings.currency === 'USD' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('settings.fxRate')}
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  readOnly
+                  value={`1 USD = ${Number(settings.fxUYUperUSD).toFixed(4)} UYU`}
+                  className="w-full px-4 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-700"
+                />
+                <span className="text-xs text-gray-500">Automática (API)</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{t('settings.fxRateDesc')}</p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
