@@ -152,6 +152,49 @@ class DashboardDataProvider:
                 'timestamp': datetime.now().isoformat(),
             }
 
+        def _try_frankfurter() -> Optional[Dict[str, Any]]:
+            """Frankfurter (ECB data): https://www.frankfurter.app/"""
+            import requests
+            url = f'https://api.frankfurter.app/latest?from={base}&to={quote}'
+            resp = requests.get(url, timeout=8)
+            resp.raise_for_status()
+            data = resp.json() or {}
+            rates = data.get('rates') or {}
+            rate_val = rates.get(quote)
+            if rate_val is None:
+                return None
+            rate = float(rate_val)
+            if rate <= 0:
+                return None
+            return {
+                'base': base,
+                'quote': quote,
+                'rate': rate,
+                'provider': 'frankfurter.app',
+                'timestamp': datetime.now().isoformat(),
+            }
+
+        def _try_fawaz_gh_cdn() -> Optional[Dict[str, Any]]:
+            """Static JSON on jsdelivr CDN: https://github.com/fawazahmed0/currency-api"""
+            import requests
+            path = f'https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/{base.lower()}/{quote.lower()}.json'
+            resp = requests.get(path, timeout=8)
+            resp.raise_for_status()
+            data = resp.json() or {}
+            rate_val = data.get(quote.lower())
+            if rate_val is None:
+                return None
+            rate = float(rate_val)
+            if rate <= 0:
+                return None
+            return {
+                'base': base,
+                'quote': quote,
+                'rate': rate,
+                'provider': 'cdn.jsdelivr currency-api',
+                'timestamp': datetime.now().isoformat(),
+            }
+
         # Intento 1: exchangerate.host
         try:
             payload = _try_exchangerate_host()
@@ -171,6 +214,26 @@ class DashboardDataProvider:
                 return payload
         except Exception as e2:
             self.logger.warning(f"FX secondary provider failure (open.er-api.com): {e2}")
+
+        # Intento 3: frankfurter.app
+        try:
+            payload = _try_frankfurter()
+            if payload:
+                self._cache_set(cache_key, payload)
+                payload['cached'] = False
+                return payload
+        except Exception as e3:
+            self.logger.warning(f"FX tertiary provider failure (frankfurter.app): {e3}")
+
+        # Intento 4: fawazahmed0 currency-api via jsDelivr CDN
+        try:
+            payload = _try_fawaz_gh_cdn()
+            if payload:
+                self._cache_set(cache_key, payload)
+                payload['cached'] = False
+                return payload
+        except Exception as e4:
+            self.logger.warning(f"FX fallback provider failure (jsdelivr currency-api): {e4}")
 
         # Si existe un valor viejo en cache_store (aunque esté vencido), úsalo marcado como stale
         stale = self._cache_store.get(cache_key)
