@@ -197,6 +197,36 @@ class ExcelStorage:
         except Exception as e:
             self.logger.error(f"Error obteniendo gastos del Excel: {str(e)}")
             return []
+
+    def obtener_gastos_por_fecha(self, fecha_desde: datetime, fecha_hasta: datetime) -> List[Gasto]:
+        """
+        Obtiene gastos en un rango de fechas usando datetime.
+
+        Args:
+            fecha_desde: Fecha/hora de inicio
+            fecha_hasta: Fecha/hora de fin
+
+        Returns:
+            Lista de gastos en el rango
+        """
+        try:
+            return self.obtener_gastos(fecha_desde.date(), fecha_hasta.date())
+        except Exception:
+            return []
+
+    def obtener_todos_gastos(self) -> List[Gasto]:
+        """
+        Obtiene todos los gastos registrados.
+
+        Returns:
+            Lista de todos los gastos
+        """
+        try:
+            fecha_inicio = date(2000, 1, 1)
+            fecha_fin = date(2100, 12, 31)
+            return self.obtener_gastos(fecha_inicio, fecha_fin)
+        except Exception:
+            return []
     
     def obtener_gastos_por_categoria(self, categoria: str) -> List[Gasto]:
         """

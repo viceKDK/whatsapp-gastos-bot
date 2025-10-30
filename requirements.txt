@@ -42,6 +42,8 @@ psutil>=5.9.0              # System and process monitoring
 # Web Dashboard Dependencies
 flask>=2.3.0               # Web framework for dashboard
 flask-cors>=4.0.0          # Cross-origin resource sharing
+flask-compress>=1.13       # Optional: gzip compression for responses
+Flask-Caching>=2.3.0       # Optional: caching layer for endpoints
 
 # Machine Learning Dependencies for NLP Categorization
 scikit-learn>=1.3.0        # Machine learning library

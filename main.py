@@ -28,9 +28,9 @@ def setup_signal_handlers(bot_runner: Optional['BotRunner'] = None) -> None:
         bot_runner: Instancia del bot para shutdown limpio
     """
     def signal_handler(signum, frame):
-        print("\n💀 CTRL+C DETECTADO - TERMINACIÓN NUCLEAR...")  # Print directo, sin logger
-        
-        # 🚀 FASE 1: MATAR CHROME INMEDIATAMENTE (SIN TIMEOUT)
+        print("\n[X] CTRL+C DETECTADO - TERMINACION NUCLEAR...")  # Print directo, sin logger
+
+        # [*] FASE 1: MATAR CHROME INMEDIATAMENTE (SIN TIMEOUT)
         try:
             import subprocess
             import platform
@@ -43,7 +43,7 @@ def setup_signal_handlers(bot_runner: Optional['BotRunner'] = None) -> None:
         except:
             pass
         
-        # 🚀 FASE 2: STOP BOT CON TIMEOUT MÍNIMO (1 segundo máximo)
+        # [*] FASE 2: STOP BOT CON TIMEOUT MINIMO (1 segundo maximo)
         if bot_runner:
             import threading
             
@@ -61,8 +61,8 @@ def setup_signal_handlers(bot_runner: Optional['BotRunner'] = None) -> None:
             
             # Si no termina en 1 segundo, exit forzado
         
-        # 🚀 FASE 3: EXIT INMEDIATO SIN MÁS DELAYS
-        print("💀 SALIDA FORZADA")
+        # [*] FASE 3: EXIT INMEDIATO SIN MAS DELAYS
+        print("[X] SALIDA FORZADA")
         import os
         os._exit(0)  # Exit más agresivo que sys.exit()
     
@@ -288,8 +288,8 @@ def run_dashboard_mode(args) -> int:
         from interface.web import run_dashboard
         
         # Ejecutar dashboard
-        print(f"🌐 Iniciando Dashboard Web en http://127.0.0.1:{args.port}")
-        print("💡 Presiona Ctrl+C para detener")
+        print(f"[WEB] Iniciando Dashboard Web en http://127.0.0.1:{args.port}")
+        print("[INFO] Presiona Ctrl+C para detener")
         
         run_dashboard(host='127.0.0.1', port=args.port, debug=(args.mode == 'dev'))
         
@@ -300,7 +300,7 @@ def run_dashboard_mode(args) -> int:
         print(f"[INFO] Instala con: pip install flask flask-cors")
         return 1
     except KeyboardInterrupt:
-        print("\n👋 Dashboard detenido por usuario")
+        print("\n[BYE] Dashboard detenido por usuario")
         return 0
     except Exception as e:
         logger.error(f"Error ejecutando dashboard: {e}")
