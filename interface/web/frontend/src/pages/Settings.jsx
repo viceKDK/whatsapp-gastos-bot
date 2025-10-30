@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Save, Bell, Shield, Database, Palette, DollarSign } from 'lucide-react'
 import { LIMITE_GASTO_MENSUAL } from '../utils/constants'
 import { saveSettings, getSettings } from '../utils/settingsStorage'
+import api from '../services/api'
 import { useNotifications } from '../context/NotificationsContext'
 import { t } from '../utils/i18n'
 
@@ -32,6 +33,22 @@ export default function Settings() {
 
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleCurrencyChange = async (value) => {
+    setSettings(prev => ({ ...prev, currency: value }))
+    if (value === 'USD') {
+      try {
+        const fx = await api.getFx({ base: 'USD', quote: 'UYU' })
+        const rate = Number(fx?.rate)
+        if (isFinite(rate) && rate > 0) {
+          setSettings(prev => ({ ...prev, fxUYUperUSD: rate }))
+        }
+      } catch (e) {
+        // Silencio: mantenemos la tasa manual existente
+        console.debug('No se pudo obtener tasa FX automática', e)
+      }
+    }
   }
 
   // Sin modo oscuro: no aplicamos clases globales
@@ -73,7 +90,7 @@ export default function Settings() {
             </label>
             <select
               value={settings.currency}
-              onChange={(e) => handleChange('currency', e.target.value)}
+              onChange={(e) => handleCurrencyChange(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="UYU">UYU - Peso Uruguayo</option>

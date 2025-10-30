@@ -84,6 +84,15 @@ class ApiService {
   async refreshData() {
     return this.request('/refresh', { method: 'GET' })
   }
+
+  // FX rate: returns { base, quote, rate, ... }
+  async getFx({ base = 'USD', quote = 'UYU' } = {}) {
+    const params = new URLSearchParams()
+    if (base) params.set('base', base)
+    if (quote) params.set('quote', quote)
+    const res = await this.request(`/v2/fx?${params.toString()}`)
+    return res?.data
+  }
 }
 
 export default new ApiService()

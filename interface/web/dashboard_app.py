@@ -87,6 +87,61 @@ class DashboardDataProvider:
             return
         self._cache_store[key] = value
         self._cache_time[key] = datetime.now()
+
+    # --- FX rate provider (with simple caching) ---
+    def get_fx_rate(self, base: str = 'USD', quote: str = 'UYU', ttl_seconds: int = 6 * 60 * 60) -> Dict[str, Any]:
+        """Obtiene tasa de cambio usando exchangerate.host con caché."""
+        try:
+            base = (base or 'USD').upper()
+            quote = (quote or 'UYU').upper()
+            if base == quote:
+                return {
+                    'base': base,
+                    'quote': quote,
+                    'rate': 1.0,
+                    'provider': 'local',
+                    'timestamp': datetime.now().isoformat(),
+                    'cached': False,
+                }
+
+            cache_key = f'fx:{base}->{quote}'
+            cached = self._cache_get(cache_key, ttl_seconds)
+            if cached is not None:
+                return { **cached, 'cached': True }
+
+            import requests  # lazy import
+            url = f'https://api.exchangerate.host/latest?base={base}&symbols={quote}'
+            resp = requests.get(url, timeout=5)
+            resp.raise_for_status()
+            data = resp.json() or {}
+            rates = data.get('rates') or {}
+            rate = float(rates.get(quote)) if rates.get(quote) is not None else None
+            if not rate or rate <= 0:
+                raise ValueError('Invalid FX rate from provider')
+
+            payload = {
+                'base': base,
+                'quote': quote,
+                'rate': rate,
+                'provider': 'exchangerate.host',
+                'timestamp': datetime.now().isoformat(),
+            }
+            self._cache_set(cache_key, payload)
+            payload['cached'] = False
+            return payload
+
+        except Exception as e:
+            # Fallback a una tasa segura (p.ej. 40 UYU por 1 USD si base=USD,quote=UYU)
+            self.logger.warning(f"FX fallback ({base}->{quote}): {e}")
+            fallback = 40.0 if base == 'USD' and quote == 'UYU' else 1.0
+            return {
+                'base': base,
+                'quote': quote,
+                'rate': fallback,
+                'provider': 'fallback',
+                'timestamp': datetime.now().isoformat(),
+                'cached': False,
+            }
     
     def get_summary_stats(self) -> Dict[str, Any]:
         """Obtiene estadísticas resumidas con comparaciones."""
@@ -847,6 +902,18 @@ class DashboardApp:
                 return jsonify({'success': True, 'data': data})
             except Exception as e:
                 self.logger.error(f"Error en API month-comparison: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.app.route('/api/v2/fx')
+        def api_fx():
+            """Obtiene tasa de cambio con caché del servidor."""
+            try:
+                base = (request.args.get('base') or 'USD').upper()
+                quote = (request.args.get('quote') or 'UYU').upper()
+                data = self.data_provider.get_fx_rate(base, quote)
+                return jsonify({'success': True, 'data': data})
+            except Exception as e:
+                self.logger.error(f"Error en API fx: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
 
         # Aplicar caché a endpoints si Flask-Caching está disponible
